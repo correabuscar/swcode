@@ -1,0 +1,136 @@
+#!/bin/bash
+#exit 0
+source "/swcode/swcode.bash"
+
+rerunasroot "$@"
+
+self="$(realpath "$0")"
+if test -z "$self" -o ! -x "$self"; then
+  echo "Cannot find self aka '$self' (derived from \$0 aka '$0')" >&2
+  exit 1
+fi
+#echo "$self"
+#exit 11
+realsync_list=()
+#TODO: test if PATH with spaces works for this! it won't work if '\n' is in filename though(right?! due to how I've coded that 'for' below!)
+process_sync_exe() {
+  rws="$(realpath "$@")"
+  if test -z "$rws" -o ! -x "$rws"; then
+    echo "Cannot find one of the 'sync's from PATH(aka '$PATH') aka '$rws' (derived from '$ws'), or isn't executable!" >&2
+  fi
+  if test "$self" != "$rws"; then
+    realsync_list+=("$rws")
+  fi
+  #echo "!$self!$rws!"
+}
+#export -f -- process_sync_exe #no effect
+#alias process_sync_exe="echo hi"
+#export process_sync_exe
+#shopt -s expand_aliases
+#/usr/bin/which of package sys-apps/which-2.21 in Gentoo
+#which --all --skip-alias --skip-functions -- sync | tr '\n' '\0' | xargs -0 -P1 -I"{}" -- process_sync_exe "{}"
+#shopt -u expand_aliases
+#for ws in $(which --all --skip-alias --skip-functions -- sync); do
+#done
+#oIFS="$IFS"
+#IFS=$'\0'
+#IFS=$'\n'
+#for ws in "$(which --all --skip-alias --skip-functions -- sync | tr '\n' '\0')"; do
+#for ws in "$(which --all --skip-alias --skip-functions -- sync)"; do
+outpat="$(which --all --skip-alias --skip-functions -- sync)"
+while IFS= read -r -d $'\n' ws; do
+  #echo "!$ws!"
+  process_sync_exe "$ws"
+done <<<"$outpat"
+#IFS="$oIFS"
+
+#yeah we pick the first one('sync' that is!) that isn't us (aka not $self) from PATH
+#ie. we might've had this in PATH:
+#/swcode/bin.prepend/sync
+#/bin/sync
+#/home/user/bin/sync
+#/swcode/bin.append/sync
+#which reduced to:
+#/swcode/sync
+#/bin/sync
+#/swcode/sync
+#/swcode/sync
+#so first non-us is /bin/sync
+realsync_exe="${realsync_list[0]}"
+if test -z "$realsync_exe" -o ! -x "$realsync_exe"; then
+  echo "Cannot find real 'sync' aka '$realsync_exe' (tried PATH aka '$PATH')" >&2
+  exit 1
+fi
+function realsync() {
+  #/bin/sync "$@"
+  #"${realsync_list[0]}" "$@"
+  #ls -la /dev/nvme* |wc -l
+  "$realsync_exe" "$@"
+}
+#echo "${realsync_list[0]}"
+#echo "${realsync_list[@]}"
+#exit 1
+
+if ! type sdparm >/dev/null 2>&1; then
+  echo 'sdparm not found; sudo pacman -S sdparm'
+  exit 1
+fi
+#sudo -v
+#can avoid sudo if caller-user is in disk group!(dangerous tho!) - user is in disk group by default on Manjaro! (probably needed to sense plugging in ESATA disks for example!)
+#sudo 
+if which journalctl 2>/dev/null; then
+  echo 'journalctl sync flush'
+  journalctl --sync --flush
+  #^ unsure if that did anything, as there are no(new) dmesg messages! I was hopping to see something like this: [    5.608122] systemd-journald[210]: Received request to flush runtime journal from PID 1
+fi
+
+#sync btrfs filesystem
+echo 'syncing btrfs for root fs /'
+time btrfs filesystem sync /
+
+shopt -s nullglob #because most of the time /dev/mmcblk? won't exist! thus it has to resolve to nothing!
+#/bin/sync: error syncing '/dev/nvme1': Invalid argument
+#/dev/nvme
+#but this works: $ sudo /bin/sync /dev/nvme1n1
+for i in /dev/sd? /dev/mmcblk? /dev/nvme?n* /dev/mapper/* ; do
+  if test "$i" == "/dev/mapper/control"; then
+    continue
+  fi
+  echo "!! '$i' normal sync" >&2
+  if test ! -e "$i"; then
+    #we wait 1 sec from a prev. hardware sync (of eg. /dev/nvme3n1) which removed the namespace file/device (eg. /dev/nvme3n1p1 is temporarily gone, kernel 5.12.13-gentoo-x86_64 Jun 25 2021)
+    #so this sleeps only when necessary
+    echo "'$i' is not found, waiting 1 second" >&2
+    sleep 1
+  fi
+  #FIXME: even with 'sleep 1' it can still happen:
+  #!! '/dev/nvme2n1' normal sync
+  #!! '/dev/nvme2n1' hardware sync (sdparm)
+  #    /dev/nvme2n1: NVMe      INTEL MEMPEK1J01  K411
+  #!! '/dev/nvme2n1p1' normal sync
+  #/bin/sync: error opening '/dev/nvme2n1p1': No such file or directory
+  #!! '/dev/nvme2n1p1' hardware sync (sdparm)
+  #    /dev/nvme2n1p1: NVMe      INTEL MEMPEK1J01  K411
+  #FIXME: alternatively, sync children/leaves first, and parent last!?
+  realsync -- "$i"
+  if ! [[ "$i" =~ /dev/mapper/ ]]; then
+    echo "!! '$i' hardware sync (sdparm)" >&2
+    #ls -la /dev/nvme* |wc -l
+    if test ! -e "$i"; then
+      #we wait 1 sec from a prev. hardware sync (of eg. /dev/nvme3n1) which removed the namespace file/device (eg. /dev/nvme3n1p1 is temporarily gone, kernel 5.12.13-gentoo-x86_64 Jun 25 2021)
+      #so this sleeps only when necessary
+      echo "'$i' is not found, waiting 1 second" >&2
+      sleep 1
+    fi
+    sdparm --command=sync -- "$i"
+  fi
+done
+sleep 1
+shopt -u nullglob
+echo "!! normal sync of all drives (in case we missed any, we always do miss virtual files mounted in dir locations!)" >&2
+time realsync
+#time sync && sudo sdparm --command=sync /dev/sdb && sleep 1
+#if test "$1" != "dontK"; then
+#  sudo -K  #this now has no effect since running as root won't clear the user's creds just root's creds!
+#fi
+#echo "done $RANDOM" > /tmp/blah

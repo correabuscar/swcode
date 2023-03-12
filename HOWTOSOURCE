@@ -1,0 +1,15 @@
+
+#XXX: when source file is in the same dir as script:
+#-------
+self="$0"
+selfrealpath="$(dirname -- "$(realpath --canonicalize-existing --physical -- "$self")")"  #follows symlinks, eg. if $self is symlink
+selfactualpath="$(dirname -- "$(realpath --canonicalize-existing --logical --no-symlinks -- "$self")")" #ie. doesn't follow symlinks eg. if $self is a symlink !
+filenametosource="commons.bash"
+# shellcheck source=./commons.bash
+source "${selfactualpath}/${filenametosource}" || source "${selfrealpath}/${filenametosource}" || exit 3
+#-------
+
+#XXX: when sourcing swcode
+source /swcode/swcode.bash
+
+#for python, see instructions inside swcode.py

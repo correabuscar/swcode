@@ -1,0 +1,5 @@
+#!/bin/bash
+
+#this will ask you to select or not, each newly added(in this new version of kernel) config option, if any.
+regenkernel -other make oldconfig || echo "you've to run regenkernel once to get the code into /tmp, FIXME; ignore this msg if you see config diff above!"
+echo "!! for this '$0' to work, you've to run regenkernel to init the dir in /tmp first, then delete the .config from there(or cp .config.old .config)! then run this"

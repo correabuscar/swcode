@@ -1,0 +1,39 @@
+#!/bin/bash
+
+#TODO: maybe set to root:no-internet ?
+ideal_user=root
+ideal_group=no-internet
+both="${ideal_user}:${ideal_group}"
+ideal_user_id="$(id -u -- "${ideal_user}" )"
+ideal_group_id="$(getent group -- "${ideal_group}" | cut -f3 -d:)"
+#sys-libs/glibc: /usr/bin/getent
+#
+#
+#this is a script to run after copying in some new patches which will no doubt have wrong user:user perms instead of root:root and to also ensure all dirs are accessible by portage user(in our case, o+rx)
+
+if test "$(basename `pwd`)" != "swcode"; then
+  echo "Fail-safe: current dir unexpected, aborting to avoid any damage to other areas" >&2
+  exit 1
+fi
+
+source "/swcode/swcode.bash"
+
+rerunasroot "$@"
+
+#All patches (dirs and files) must be accessible by portage:portage, even though owned by root(so portage can't modify them!)
+find . \( \! -uid "${ideal_user_id}" -o \! -gid "${ideal_group_id}" \) -a \! -type l -exec chown -vc "${both}" "{}" \;
+find . -type d -a \! -type l -exec chmod -vc u+rwx,g+rx,g-w,o-w,o+rx "{}" \;
+#find . -type f -a \! -type l -exec chmod -vc u+rwx,g-w,o-w "{}" \;
+#seems to work in one go:
+#mode of './a' changed from 0000 (---------) to 0700 (rwx------)
+#mode of './a/b' changed from 0000 (---------) to 0700 (rwx------)
+#mode of './a/b/c' changed from 0000 (---------) to 0700 (rwx------)
+
+#find all symlinks that point to files(anywhere) and these files are not owned/group by root (eg. root:user or user:root will be found, as long as they're not root:root and symlinks point to them)
+ec=0
+for i in $(find -L . -xtype l -and \( \! -uid "${ideal_user_id}" -or \! -gid "${ideal_group_id}" \)); do
+  echo "!! Found '$i' as non-${both} owned."
+  ec=1
+done
+
+exit "$ec"

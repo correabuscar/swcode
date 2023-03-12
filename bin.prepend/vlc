@@ -1,0 +1,20 @@
+#!/bin/bash
+
+
+#not needed:
+  #--ro-bind /run/user/1000/at-spi /run/user/1000/at-spi \
+
+#TODO: there's also `id -u`
+if test -n "$UID" -a "$UID" != "1000"; then
+  echo "UID aka user id isn't 1000, this is unexpected but should still work! UID=$UID" >&2
+fi
+
+set -xv
+bwrap --ro-bind /usr /usr --ro-bind /bin /bin --ro-bind /sbin /sbin --ro-bind /lib /lib --ro-bind /lib64 /lib64 --proc /proc --dev /dev --dev-bind /dev/log /dev/log --unshare-pid --unshare-user --ro-bind /etc /etc --ro-bind "/run/user/${UID}/pulse" "/run/user/${UID}/pulse" --ro-bind /home/user/.config/mimeapps.list /home/user/.config/mimeapps.list --ro-bind /home/user/bin/confHOME//home/user/.config/mimeapps.list /home/user/bin/confHOME//home/user/.config/mimeapps.list --ro-bind /swcode /swcode --tmpfs /tmp --tmpfs /var/tmp --bind /tmp/.X11-unix/X0 /tmp/.X11-unix/X0 --ro-bind /home/user/.Xauthority /home/user/.Xauthority \
+  --bind "/home/user/.config/vlc" "/home/user/.config/vlc" \
+  --ro-bind "/home/user/1" "/home/user/1"  \
+  --ro-bind "$@" "$@" \
+  -- /usr/bin/vlc "$@"
+#i dno if all of these are needed!
+#TODO: properly detect which on cmdline are files to play and ro-bind them! FIXME: currently doing "$@" which will fail if vlc args are passed!
+

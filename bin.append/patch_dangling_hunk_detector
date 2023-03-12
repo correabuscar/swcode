@@ -1,0 +1,163 @@
+#!/bin/bash
+#!/usr/bin/awk --
+
+#revision 2022-March-24
+
+#TODO: allow multiple files on cmdline to be parsed even if any prev. of them fails! currently exits on first error, so subsequent files aren't processed! Workaround is using something like this: $ find /patches/ -type f -and -iname \*.patch -and -exec ./patch_dangling_hunk_detector "{}" \;
+
+# :-  means use default value of, in bash 
+awk --assign wwarn="${WARN:-1}" -f <(echo '
+function abs(v) {return v < 0 ? -v : v}
+function run_test() {
+  if (in_hunk == 1) {
+    #print hunk_lines_expected_in_input,in_hunk_minus_lines,in_hunk_plus_lines
+    total_lines_in_out_file= hunk_lines_expected_in_input - in_hunk_minus_lines + in_hunk_plus_lines
+    if (total_lines_in_out_file != hunk_lines_expected_in_output) {
+      print "Malformed hunk(starting at line",hunk_starts_at_line,") has ",total_lines_in_out_file," lines but ", hunk_lines_expected_in_output, " expected! For file", FILENAME
+      exit 2
+    } else {
+     #print "Hunk ended normally"
+     in_hunk=0 #to be sure
+     #if (in_hunk == 1){
+       patchfile_ended=1
+       current_patched_file=""
+       hunk_count=0
+     #}
+    }
+  }
+}
+function testfiletobepatched() {
+  if (current_patched_file != "" && hunk_count <=0) {
+    print "Current patched file",current_patched_file," has no hunks in patchfile:",FILENAME,"at line",current_patched_file_linestart
+    exit 4
+  }
+}
+
+BEGINFILE {
+ in_hunk=0
+ patchfile_ended=1
+ hunk_count=0
+ current_patched_file=""
+}
+
+/^--\s(\r)?$/ {
+#FIXME: this is a hack because I am unable to properly detect a hunk, when the hunk is complete, so the next line that looks like it is part of the hunk is added to it but should not be according to hunk numbers but also cant check after each hunk line if hunk is done because the match can be temporarily pointing to a done hunk but it isnt
+  run_test()
+}
+
+/^\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*$/ {
+ #weird format patch file eg. coredump_if_segfault_within_bash.patch
+ #ignoring
+ current_patched_file=""
+ next
+}
+/^---\s+[0-9,]+\s+----/ {
+ current_patched_file=""
+ next
+}
+
+/^---\s+/ {
+ testfiletobepatched()
+ hunk_count=0
+ current_patched_file=$2
+ current_patched_file_linestart=NR
+ #print "new file patch",current_patched_file
+ patchfile_ended=0
+ next
+}
+
+
+#FIXME: apparently empty line can be part of the hunk! and is equivalent to a space then newline aka empty line in patched file.
+/^ .*/ {
+  if (in_hunk == 1){
+    in_hunk_space_lines+=1
+    next
+  }
+}
+
+/^$/ {
+  if (in_hunk == 1){
+    #print $0
+    #So this happens because patches were copied from eg. github via mouse copy/paste, instead of file download.
+    #But this is accepted by the patch command, however you can get Malformed hunk because of this
+    if (wwarn == 1) {
+      print "Warn: Empty line at ",NR," (for hunk starting at line",hunk_starts_at_line,") which should be prefixed by a space char! For file", FILENAME, " Fix this if you get Malformed hunk after this!"
+    }
+    #run_test()
+    #exit 8
+  }
+}
+
+/^+.*/ {
+  if (in_hunk == 1) {
+    in_hunk_plus_lines+=1
+    next
+  }
+}
+
+/^-.*/ {
+  if (in_hunk == 1){
+    #print $0
+    in_hunk_minus_lines+=1
+    next
+  }
+}
+
+/^@@ [0-9-]+(,[0-9]+)?\s+[0-9+]+(,[0-9]+)?\s+@@/ {
+  hunk_count+=1
+  #print $2 $3
+  split($2,arr,",")
+  hunk_lines_expected_in_input=int(arr[2])
+  if (hunk_lines_expected_in_input < 0) {
+    print "hunk_lines_expected_in_input is negative",hunk_lines_expected_in_input,"for file", FILENAME
+    exit 6
+  }
+  if (index($2,",") == 0) {
+    hunk_lines_expected_in_input=1
+  }
+  split($3,arr,",")
+  hunk_lines_expected_in_output=int(arr[2])
+  if (hunk_lines_expected_in_output < 0) {
+    print "hunk_lines_expected_in_output is negative",hunk_lines_expected_in_output,"for file", FILENAME
+    exit 7
+  }
+  if (index($3,",") == 0) {
+    hunk_lines_expected_in_output=1
+  }
+  #print "expecting",hunk_lines_expected_in_input,hunk_lines_expected_in_output,"hunk lines i/o in this hunk"
+  in_hunk=1
+  hunk_starts_at_line=NR
+  in_hunk_space_lines=0
+  in_hunk_plus_lines=0
+  in_hunk_minus_lines=0
+  if (patchfile_ended == 1) {
+    print "Found dangling hunk at line", hunk_starts_at_line,"in file",FILENAME,"This means that non comment (^#) lines are somewhere before this hunk and after the prev. hunk! Fix it!"
+    exit 3
+  }
+  next
+}
+
+/^@@ [0-9+-]/ {
+  print "undetected hunk in file",FILENAME," at line:",NR,"line contents:",$0
+  exit 1
+}
+/^#/ {
+ next
+}
+
+/^\\ No newline at end of file$/ {
+  next
+}
+
+#  print "dangling hunk at line:",NR,"line contents:",$0
+// {
+  #print $0,NR
+  run_test()
+}
+ENDFILE {
+  testfiletobepatched()
+  run_test()
+}
+
+') -- "$@"
+

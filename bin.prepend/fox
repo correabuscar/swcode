@@ -1,0 +1,160 @@
+#!/bin/bash
+
+source "/swcode/swcode.bash"
+set_xfce4_terminal_title "`basename "$0"` in pwd='`pwd`'"
+
+#export LANG=C
+
+export MOZ_ENABLE_WAYLAND=1
+#^ https://wiki.gentoo.org/wiki/Wayland#Running_Mozilla_Firefox_in_Wayland_mode
+
+#export MOZ_DISABLE_RDD_SANDBOX=1  #https://bugzilla.mozilla.org/show_bug.cgi?id=1519608#c1  or media.rdd-process.enabled=false in about:config https://bugzilla.mozilla.org/show_bug.cgi?id=1515982#c8
+export JSGC_DISABLE_POISONING=1
+#GC Poisoning
+#
+#Many Firefox builds have a diagnostic tool that causes crashes to happen sooner and produce much more actionable information, but also slow down regular usage substantially. In particular, "GC poisoning" is used in all debug builds, and in optimized Nightly builds (but not opt Developer Edition or Beta builds). The poisoning can be disabled by setting the environment variable
+#
+#    JSGC_DISABLE_POISONING=1
+#
+#before starting the browser.
+
+#fflogfile="/tmp/ff.out.log"
+#exec > "$fflogfile" 2>&1
+downloadsdironhost="${HOME}/Downloads.bwrapped"
+mkdir -p -- "${downloadsdironhost}"
+
+#TODO: do I need this dir?  Error: Could not get children of file(/home/user/.cache/mozilla/firefox/zo5gqb5l.default-release/thumbnails) because it does not exist from ctrl+shift+J if left open and firefox is restarted.
+
+if test -n "$UID" -a "$UID" != "1000"; then
+  echo "UID aka user id isn't 1000, this is unexpected but should still work! UID=$UID, id -u is $(id -u)" >&2
+  echo "actually, bailing out for now..."
+  exit 1
+fi
+
+#if not ran as $0=='foxdebug' then we bubblewrap(package) it, otherwise prefix=() here!
+# shellcheck disable=SC2002,SC2207
+prefix=(
+  bwrap
+  --ro-bind /usr /usr
+  #for ArchLinux:
+  #--symlink usr/lib64 /lib64
+  #for Gentoo(or else "bwrap: execvp firefox: No such file or directory"):
+  --ro-bind /bin /bin
+  --ro-bind /sbin /sbin
+  --ro-bind /lib /lib
+  --ro-bind /lib64 /lib64
+  #end Gentoo.
+
+  --proc /proc
+  --dev /dev
+  --dev-bind /dev/log /dev/log
+  # --dev-bind /dev/log /dev/log  required so that the dns lookup requests can be logged (via openlog() and syslog() from glibc, to host's dmesg!), because --dev /dev  just uses a new one I guess.
+  --unshare-pid
+  --unshare-user
+  #no net with this, wonder why:
+  #--unshare-net
+
+  --ro-bind /etc /etc
+
+  #--ro-bind /run /run  #this makes the other below /run/user/1000/ readonly too!
+  #--ro-bind /var /var
+  #--bind /run /run  #yes this makes the sound work in firefox/youtube, but need a more limited one:
+  #yes this makes the youtube audio work:
+  --ro-bind "/run/user/$(id -u)/pulse" "/run/user/$(id -u)/pulse"
+  #prev. tries:
+#  --ro-bind /run/udev /run/udev
+#  --ro-bind /run/systemd /run/systemd
+#  --ro-bind /run/tmpfiles.d /run/tmpfiles.d
+#  --ro-bind /run/initctl /run/initctl
+#  --ro-bind /run/utmp /run/utmp
+#  --ro-bind /run/media /run/media
+#  --bind /run/dbus /run/dbus
+#  #--bind /run/dbus /run/dbus
+#  #--bind /var/lock /var/lock
+#  --bind /run/lock /run/lock
+#  --bind /run/dmeventd-server /run/dmeventd-server
+#  --bind /run/dmeventd-client /run/dmeventd-client
+
+
+  --ro-bind /home/user/.config/mimeapps.list /home/user/.config/mimeapps.list
+  #^ because this ^ is a symlink to:
+  --ro-bind /home/user/bin/confHOME//home/user/.config/mimeapps.list /home/user/bin/confHOME//home/user/.config/mimeapps.list
+
+  #--ro-bind /home/user/bin/fox /home/user/bin/fox
+  --ro-bind /swcode/bin.prepend/fox /swcode/bin.prepend/fox
+  --ro-bind /swcode /swcode
+  #^ it's $0
+  --tmpfs /tmp
+  --tmpfs /var/tmp
+  --bind "$downloadsdironhost" "${HOME}/Downloads/"
+
+  #the profiles dir and using profile-sync-daemon aka psd(puts them into /run/user/)
+  --bind /home/user/.mozilla /home/user/.mozilla
+  --bind /home/user/bin/confHOME//home/user/.mozilla/firefox/profiles.ini /home/user/bin/confHOME//home/user/.mozilla/firefox/profiles.ini
+
+  #!bind the actual profile dirs:
+
+  #This is for when using profile-sync-daemon (which requires systemd):
+  #$(cat /home/user/.mozilla/firefox/profiles.ini | grep '^Path' | cut -f2 -d'=' | xargs -P1 -I{} -- echo "--bind /run/user/$(id -u)/user-firefox-{} /run/user/$(id -u)/user-firefox-{}") #should get: --bind /run/user/1000/user-firefox-dqoq5his.x /run/user/1000/user-firefox-dqoq5his.x  AND (next line): --bind /run/user/1000/user-firefox-t1j6ysv1.dd /run/user/1000/user-firefox-t1j6ysv1.dd  (assuming two profiles were found!)
+  #FIXME: unsure which 'user' (text) is the username , possibly only the one in 'user-firefox-profilenamehere', but NOT also the one in "/run/user/`id -u`/"
+
+  #this is for when using openrc on Gentoo:
+  $(cat /home/user/.mozilla/firefox/profiles.ini | grep '^Path' | cut -f2 -d'=' | xargs -P1 -I{} -- echo "--bind /home/user/.mozilla/firefox/{} /home/user/.mozilla/firefox/{}")
+
+  #!done binding actual profile dirs
+
+  #Sandbox: /tmp/.X11-unix/X0 is inaccessible (No such file or directory); can't isolate network namespace in content processes
+  --bind /tmp/.X11-unix/X0 /tmp/.X11-unix/X0
+  #--bind /tmp /tmp
+  #--ro-bind /home/user /home/user
+
+  #allow addons install:
+  --ro-bind /home/user/SOURCE/browser.stuff/both/uBlock/uBlock/dist/build /home/user/SOURCE/browser.stuff/both/uBlock/uBlock/dist/build
+  --ro-bind /home/user/SOURCE/browser.stuff/both/uMatrix/uMatrix/dist/build /home/user/SOURCE/browser.stuff/both/uMatrix/uMatrix/dist/build
+  #XXX must use same path or else ./go script from eg. /home/user/SOURCE/browser.stuff/both/uBlock/go will point to wrong path when attempting to auto-install the just compile addon!
+  --ro-bind /home/user/SOURCE/browser.stuff/both/https-everywhere/https-everywhere/pkg /home/user/SOURCE/browser.stuff/both/https-everywhere/https-everywhere/pkg
+  --ro-bind /home/user/SOURCE/browser.stuff/both/decentraleyes /home/user/SOURCE/browser.stuff/both/decentraleyes
+
+  #--setenv DISPLAY "$DISPLAY" #not needed!
+  #"Error: cannot open display: :0" unless I do this:
+  --ro-bind /home/user/.Xauthority /home/user/.Xauthority
+  #"(firefox:2): dbind-WARNING **: 05:22:03.720: Couldn't connect to accessibility bus: Failed to connect to socket /tmp/dbus-m4GrDaGXQR: No such file or directory" unless I do this:
+  #--bind /tmp/dbus-* /tmp/dbus-* #should expand to only 1 file! FIXME: is this in ~/.cache/ ? which symlinks to /tmp for me now btw. Well it seems to be /run/user/1000/at-spi/bus_0 as per ps axuw|grep dbus
+  #--bind /tmp/session-bus/* /tmp/session-bus/* #apparently this is dbus file in gentoo now? 25may2022   this is dbus related but i dno if I need this? TODO it does refer to /tmp/dbus-* file but that file isn't created yet or ever? instead this one is /run/user/1000/at-spi/bus_0
+  --ro-bind "/run/user/$(id -u)/at-spi" "/run/user/$(id -u)/at-spi" #so this is dbus now on Gentoo 25may2022 ie. /run/user/1000/at-spi/bus_0 (should be just this file)  FIXME: this shouldn't be ro ?
+  --
+  )
+
+#XXX --no-remote  means always start new instance! eg. if firefox is already running, a new one will be started!
+extra=(-P "$RANDOM" "$@")  #must be at the end, else it will take the url as an arg and think it's the profile name! or maybe -P -  works? yep, that works! ok, it doesn't work(again, oddly enough) unless I do: -P - -- fullpathtofile.xpi
+#so, can't add -P at the end, in case of "fox -- url" callers!  great it works with random: -P 4567 url 
+gdbcmdsfile='/tmp/ff.gdbcmdsfile'
+if test "${0##*/}" == "foxdebug"; then
+  prefix=(gdb -e)
+  cat > "$gdbcmdsfile" <<EOF
+set pagination off
+run ${extra[@]}
+EOF
+#FIXME: ^ ff args with spaces(in the 'run' line) become multiple args, eg. "a ha" becomes "a" "ha" (no quotes)
+
+#  echo "run ${extra[@]}" > "$gdbcmdsfile"
+  extra=(-x "$gdbcmdsfile")
+fi
+
+filterout=(
+stdbuf -o0 -- cat  #works the same as just 'cat' here, ie. buffered by line, that is, unless '\n' is encountered it's buffered! when '\n' then it prints it!
+
+#sed --unbuffered -re '/^.*(VERBOSE1:gpu_channel.cc\([0-9]+\)\] (received|sending) message @|Cannot serialize binary value.|Styling master document from stylesheets defined in HTML Imports is deprecated).*$/d'
+)
+#taill=(
+#tail
+#"--follow=name"
+#"$fflogfile"
+#)
+
+sudo --remove-timestamp
+set -x
+export RUST_BACKTRACE=1
+pushd /tmp && "${prefix[@]}" /usr/bin/firefox "${extra[@]}" 2>&1 | "${filterout[@]}" |sed --unbuffered -re "s/(FATAL|ERROR|WARN|!! |\\[end of stack trace\\]|^#|Extension error:|JavaScript error:|Exception stack|^Current stack)(.*$)/$(tput setab 1)\\1\\2$(tput sgr0)/g" | sed --unbuffered -re "s/^(! )([^ ]*.*$)/$(tput setab 4)\\1\\2$(tput sgr0)/g"
+popd
+

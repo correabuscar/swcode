@@ -1,0 +1,9 @@
+#!/bin/bash
+xhost #shows currently allowed
+xhost +SI:localuser:_kernelbuilder
+xhost -local:  #this shouldn't be there but I had it from before for some reason!
+xhost -
+xhost #shows currently allowed
+regenkernel -other make xconfig || echo "you've to run regenkernel once to get the code into /tmp, FIXME; ignore this msg if you see config diff above!"
+xhost -SI:localuser:_kernelbuilder
+xhost #shows currently allowed

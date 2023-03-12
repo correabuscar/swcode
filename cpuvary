@@ -1,0 +1,27 @@
+#!/bin/bash
+
+cd /tmp || cd / #XXX to avoid this spam: shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+
+source "/swcode/swcode.bash"
+
+rerunasroot "$@"
+
+if ! is_z575; then
+  echo "Not running '$0' on non-Z575" >&2
+  sleep 2
+  exit 1
+fi
+
+srcfile="/swcode/cuspctrl.py"
+#chown root:root -- "$srcfile"
+#chmod 0755 -- "$srcfile"
+#chown root:root -- "/swcode/swcode.py"
+#chmod 0755 -- "/swcode/swcode.py"
+#because some copied files are user:user
+chown --recursive --changes root:root -- "/swcode"
+#if /swcode is a symlinkdir, it will be followed:
+find -L "/swcode" -iname '*.py' -print0 | xargs -0 -P0 -- chmod --changes 0755 --
+#chmod --changes 0755 -- "/swcode/*.bash"
+# 0755/-rwxr-xr-x
+#pypy3 -OO -bb "$srcfile"
+pypy3 -bb "$srcfile"

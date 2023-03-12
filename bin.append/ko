@@ -1,0 +1,56 @@
+#!/bin/bash
+
+#Last Update:12Oct2022 moved to /swcode and not using sudo or root at all!
+#Prev Last Update:20Sept2022
+#Prev.Last Update: 26.Jan.2021
+
+#puts keyboard into auto-sleep mode which makes it turn off after 1-2 seconds of inactivity (it's 2 sec `cat /sys/bus/usb/devices/1-6/power/autosuspend_delay_ms` is 2000)
+#to workaround this issue whereby touch-sensitive |<< key sometimes spams keycode 165 press&release events(seen via `showkey` as root!)  https://insider.razer.com/index.php?threads/razer-lycosa-on-linux-sometimes-starts-spamming-ie-ctrl-2-in-read-chars-continously.49225/
+#this avoids having to unplug USB connector, aka replug keyboard to get the same fixxage effect.
+#XXX to avoid the ^@ spam just hold any touch-sensitive key, while typing eg. user/password at login prompt, or password at sudo prompt! then at command prompt holding is not needed, just type 'ko' (name of this script) and it should fix it, type it again to toggle it back to normal! since 'auto' turns off the leds too!
+
+#XXX: new case, pressing(then releasing) the toggle-leds touch-sensitive key would generate keycode 165 press then release(which is the keycode for |<< touch-sensitive key) and thus nothing would happen (leds state won't change) to unstuck, ko wasn't enough! instead holding left WinKey(keycode 125) and pressing toggle-leds key then releasing Winkey did unstuck it! Note: normally, pressing toggle-leds key generates no keycode on its own! This workaround didn't work this second time! Ok maybe another run of `ko` to switch back to normal was needed? unsure
+
+
+#XXX: new case, key 'o' wasn't working anymore, everything else still did and there wasn't any 165 spam, but keyboard wouldn't get auto suspended after 2 sec either! The only thing that did work was usbreset.c https://gist.github.com/howaboutsynergy/958d4929030f93416f36749980e33818#gistcomment-2938629
+# it seems this was due to keyboard not sending a release event for key 'o' and thus kept remembering it was still being pressed!
+#oh wait, I actually remember running showkey on console and during login there was ^@ spam !! so I had to hold the toggle-leds touch-sensitive key to prevent ^@ from spamming during entering user and pass, even though toggle-leds key seems to have been working normally!
+
+#TODO: get right path for Lycosa, eg. /sys/bus/usb/devices/1-6/idProduct 0109 /sys/bus/usb/devices/1-6/idVendor 1532
+#TODO: use usbreset.c instead
+
+keyvendorproduct="1532:0109" #Bus 001 Device 002: ID 1532:0109 Razer USA, Ltd Lycosa Keyboard
+bus=$(lsusb -d "$keyvendorproduct" |cut -f2 -d' ')
+dev=$(lsusb -d "$keyvendorproduct" |cut -f4 -d' '|cut -f1 -d:)
+
+#sudo -v
+echo "Don't press anything for 1 second..."
+sleep 1 #so that you get the chance to release Enter key, else it will keep seeing it pressed when this script is done. (20Sept2022)
+clrbuf #so it doesn't repeat the Enter key(press)
+#TODO: ideally here, unstuck any keys, ie. keyup all keys? or somehow clear their pressed state, even if held down... hmm..
+#sudo usbreset "$bus" "$dev" #on archlinux
+#one is enough:
+#sudo usbreset "$bus"/"$dev" #on gentoo
+#sudo usbreset "$keyvendorproduct" #on gentoo
+
+#usbreset doesn't even need root! and it works! 12 oct 2022!
+usbreset "$bus"/"$dev" #on gentoo
+usbreset "$keyvendorproduct" #on gentoo
+#$ qfile usbreset
+#sys-apps/usbutils: /usr/bin/usbreset
+#that's the package that has lsusb !
+#
+#got one today 21June2019 around 13 o'clock it was the ^@ again//nvmXXX Note to self: I haven't encountered any keyboard issues since doing this reset! and computer was turned off/on multiple times since, over the course of several days... so maybe a coincidence or something about this usbreset that "fixed" something permanently? (wrote this on 2019/06/18 08:35:27) that being said, I did unpluc Corsair PSU from 03:00.0 USB controller: ASMedia Technology Inc. ASM2142 USB 3.1 Host Controller pretty much after that, so this could also be it somehow.
+
+#before="$(cat /sys/bus/usb/devices/1-6/power/control)"
+#echo -n "Before: $before"
+#echo
+#if test "$before" == "on"; then
+#  toggle="auto"
+#else
+#  toggle="on"
+#fi
+#
+#echo "$toggle" | sudo tee '/sys/bus/usb/devices/1-6/power/control' >/dev/null
+#echo "After: $(cat /sys/bus/usb/devices/1-6/power/control)"
+echo "All done."

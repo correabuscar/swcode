@@ -1,0 +1,26 @@
+#!/bin/bash
+
+#XXX don't put any statements here or they'll be executed when you do 'source thisfile'!
+
+#genkernel call will use /usr/src/linux (symlinkdir) as kernel sources!
+kernelsourcesdir="/usr/src/linux" #don't change this unless you also tell genkernel about it! it's implied.
+buildasuser="_kernelbuilder"
+kerneloutdir="/tmp/genkernel.outdir"
+logfile="/var/log/genkernel.log" #owned by $buildasuser user
+installtobootdir="/boot"
+ccachemaxsize="20G" #default 5G  WARNING: this is only updated when user is first created!!!
+moduleprefixdir="/tmp/genkernel.moduleprefix.dir" #shouldn't be equal to $kerneloutdir because that one already has a ./lib/ dir!
+#XXX: ^ --module-prefix was renamed to --kernel-modules-prefix (also INSTALL_MOD_PATH to KERNEL_MODULES_PREFIX) in commit 6882485e665f8b6eb388696dfc0fd983faa9d922 of 2 Aug 2020 and in genkernel 4.1.0
+genkerneltmpdir='/var/tmp/genkernel'
+installmodulestodir="/lib/modules" #eg. /lib/modules/5.4.15-gentoo-x86_64/
+SAFETYARGS=(
+  #such as extra cleanups which means extra compilations
+  --clear-cachedir  #will clean /var/cache/genkernel/4.0.2/*.tar.xz  files and thus rebuild them all such as busybox! this shouldn't be needed unless you want latest versions of those(to be used inside initramfs, ofc), which only comes with a newer genkernel version, see for example: https://gitweb.gentoo.org/proj/genkernel.git/tree/patches/busybox/1.31.1
+  #doneFIXME: those are not compiled with ccache! find a way to make it so! so /var/cache/genkernel/4.0.2/*.tar.xz when using genkernel arg --clear-cachedir are cleaned and compiled without ccache! // done via --utils-cc= --utils-cxx=
+)
+DEBUGARGS=(
+  #set these when trouble is encountered!
+  #--no-cleanup  #will keep whatever compilation sources/objects genkernel was working on when it failed compilation such as in /var/tmp/genkernel/gk_WkEIqIsD/busybox_ENpA9qim/*
+)
+genkernelcachedir="/var/cache/genkernel" #re-setting this here to the same value, because we want to remove it on each run
+#genkernelcachedir="/cache.genkernel" #not the same as portage's /ccache/ dir just in case some genkernel flags will clean/empty it! like --postclear  ; not a ccache dir either!!! it's genkernel cache dir, wtw that means! ok so default is /var/cache/genkernel and it stores *.tar xz bz2 stuff!

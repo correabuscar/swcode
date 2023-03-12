@@ -1,0 +1,10 @@
+#!/bin/bash
+
+#clrbuf() {
+#doc http://tldp.org/LDP/Bash-Beginners-Guide/html/sect_08_02.html
+read -r -t 0.1 -s -e --
+#XXX: doesn't work without -e which is using readline; GNU bash, version 5.0.16(1)-maint (x86_64-pc-linux-gnu) commit 3235014e5b3d227ccd617b0be72d897eb476d23d on devel branch Date:   Mon Apr 20 10:11:53 2020 -0400
+stty echo echok # to mitigate against issue in /home/user/sandbox/read/concurrent_reads/stty_-echo
+exit 0
+#}
+

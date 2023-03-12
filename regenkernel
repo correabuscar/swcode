@@ -1,0 +1,342 @@
+#!/bin/bash
+
+source "/swcode/swcode.bash"
+echo 'XXX: Note if you changed any kernel patches(in /etc/portage/patches/portage/sys-kernel/gentoo-sources*/) you have to re-emerge git-sources for them to get re-applied!'
+rerunasroot "$@"
+source /swcode/regenkernel.envvars
+
+#FIXME: the temp dirs must be deleted if the kernel to be compiled is now a newer version, I mean the /tmp/ dirs: $kerneloutdir and $moduleprefixdir which are like /tmp/genkernel.outdir/ /tmp/genkernel.moduleprefix.dir/
+
+#if ! test -d "$kernelcachedir"; then
+#  set -e
+#  #sudo -u portage -g portage -- mkdir -p "$kernelccachedir"
+#  sudo install -m0775 --owner=portage --group=portage -d -- "$kernelcachedir"
+#  set +e
+#fi
+
+if test -z "$buildasuser"; then
+  echo "!! \$buildasuser is empty, aborting..." >&2
+  exit 1
+fi
+
+#make sure $buildasuser user exists, or create it:
+if ! id -- "$buildasuser"; then
+  set -vex
+  useradd --create-home --shell /sbin/nologin -- "$buildasuser"
+  set +vex
+  sudo -u "$buildasuser" -g "$buildasuser" -- ccache --max-size="$ccachemaxsize"
+fi
+
+sudo touch "$logfile"
+sudo chown "$buildasuser" -- "$logfile"
+
+#ensure $kerneloutdir directory exists with the proper permissions!
+if ! test -d "$kerneloutdir"; then
+  set -evx
+  #sudo -u "$buildasuser" -g "$buildasuser" -- mkdir -p "$kerneloutdir"
+  sudo install -m0775 --owner="$buildasuser" --group="$buildasuser" -d -- "$kerneloutdir"
+  set +evx
+fi
+#copy the kernel .config from /usr/src/.config into the $kerneloutdir if not already there!
+if ! test -f "${kerneloutdir}/.config"; then
+  set -evx
+  sudo -u "$buildasuser" -g "$buildasuser" -- cp -a --target-directory="$kerneloutdir" -- "/usr/src/.config"
+  set +evx
+  #well the -a won't have any effect in keeping the root:root owner, but should keep the other stuff like timestamps
+fi
+
+if test -z "$kerneloutdir" -o -z "$installtobootdir"; then
+  echo "!! Empty vars: kerneloutdir='$kerneloutdir', installtobootdir='$installtobootdir'" >&2
+  exit 1
+fi
+tmpoutbootdir="${kerneloutdir}/${installtobootdir}.temp"
+rm -rf -- "$tmpoutbootdir"  #always clean it, we don't want the previously compiled kernel tries to be seen as prev. kernel
+#if ! test -d "$tmpoutbootdir"; then
+  set -vex
+  #sudo -u "$buildasuser" -g "$buildasuser" -- 
+  sudo install -m0775 --owner="$buildasuser" --group="$buildasuser" -d -- "$tmpoutbootdir"
+  set +vex
+#fi
+
+#some files in /boot aren't a+r ! possibly due to prev. genkernel runs when I didn't make it build as another non-root user! Actually it's initramfs a-rwx due to /etc/kernel/postinst.d/25-glue_cpu_microcode_to_kernel  (grub doesn't care about permissions)
+##warning: this 'chown' command relies on shell expansion:
+#shopt -s failglob
+##^ want to exit/fail if the * doesn't expand to anything, indicating a bug somewhere else!
+#set +o noglob
+##^ should be already on! unless 'set -f' or 'set -o noglob' was executed! but otherwise it's on by default, eg. '$ echo *' will expand(if any files in current dir)!
+##will copy files that genkernel put into "$tmpoutbootdir" over into /boot  (as root), we're already root, but still calling 'sudo' for some reason xD
+set -vex
+sudo -- find "${installtobootdir}" -maxdepth 1 -type f -print0| xargs -P0 -0 --exit -- chmod -vc --preserve-root a+r --
+#"${installtobootdir}/"*
+set +vex
+
+#gotta have the current kernel,initramfs and stuff so that genkernel can properly create the updated symlinks pointing to it
+sudo -u "$buildasuser" -g "$buildasuser" -- cp --preserve=all --no-dereference --no-preserve=ownership --target-directory="$tmpoutbootdir" -- "$installtobootdir"/*
+#Note this is good: cp: -r not specified; omitting directory '/boot/grub'
+#TODO: replace 'cp' here and below, with rsync to remove unnecessary writes!
+#exit 1
+
+if test -f "${kernelsourcesdir}/.config"; then
+  echo ".config is present in '${kernelsourcesdir}' thus it will be considered tainted! Move it to /usr/src/ instead! It will be used by '$0' unless already exists in $kerneloutdir" >&2
+  #". You should copy the old one and run 'make syncconfig' inside /usr/src/linux/" >&2
+  exit 1
+fi
+
+#we are root here, so removing previously-root-owned cache dir:
+if test -d "$genkernelcachedir" -a "$genkernelcachedir" != '/'; then
+  set -vex
+  #sudo rm -rf -- "$kernelcachedir"
+  set +vex
+else
+  sudo -u "$buildasuser" -g "$buildasuser" -- mkdir -p "$genkernelcachedir"
+fi
+sudo chown -R "${buildasuser}:${buildasuser}" -- "$genkernelcachedir"  #after this, genkernel --clear-cache can remove whatever!
+
+#if ! mount |grep -- /bewt ; then
+#  echo "!! Mounting /bewt"
+#  #set -e #not working!
+#  cryptsetup --verbose --allow-discards luksOpen /dev/sda2 luks_on_sda2_boot && mount /bewt
+#  #set +e
+#  #FIXME: must check each value of ${PIPESTATUS[@]} or will miss the mount fail for example:
+#  ec="$?"
+#  echo "!! exit codes: ${PIPESTATUS[@]}"
+#  if test "$ec" -ne 0; then
+#    echo "!! umounting failed! exit code: $ec"
+#    exit "$ec"
+#  fi
+#else
+#  echo "!! /bewt already mounted, moving on..."
+#fi
+
+#XXX ok this is now CONFIG_LOCALVERSION="-x86_64" and we really shouldn't be stripping it because it gets added only when compiling kernel, not when 'make nconfig'; ok this is better now, nconfig doesn't detect a change when I just press ESC without changing anything!
+#echo "!! stripping localversion (leftover from git)"
+#(nevermind this has no effect): this assumes this is already set: CONFIG_LOCALVERSION_AUTO=y
+#otherwise you get nothing appended to kernel version - this is what should happen!!!
+#sed -e 's/CONFIG_LOCALVERSION=.*$//g' -i /usr/src/linux/.config
+#sed -e '/^CONFIG_LOCALVERSION=.*$/d' -i /usr/src/linux/.config
+#sed -e '/^CONFIG_LOCALVERSION=.*$/d' -i "${kerneloutdir}/.config"
+#ec="$?"
+#if test "$ec" -ne 0; then
+#  echo "!! sed failed! exit code: $ec"
+#  exit "$ec"
+#fi
+
+if test "$#" -gt "0" -a "$1" == "-other"; then
+  shift 1  #skip the "-other" arg
+  set -vex
+  pushd "${kerneloutdir}"
+  set +vex
+  echo "!! Running '$*' as user '$buildasuser' in PWD='`pwd`' ..."
+  time sudo -u "$buildasuser" -g "$buildasuser" -- "$@" ; ec="$?"
+  echo "!! exit code '$ec'"
+  colordiff -up "/usr/src/.config" "${kerneloutdir}/.config"
+  exit "$ec" #we don't want to continue here anyway
+fi
+echo "!! Running genkernel..."
+#time genkernel all --bootdir="/bewt" --install --symlink --no-splash --no-mountboot --makeopts="-j4 V=0" --no-keymap --lvm  --no-mdadm --no-dmraid --no-zfs --no-multipath --no-iscsi --disklabel --luks --no-gpg --no-netboot --no-unionfs  --no-firmware --no-integrated-initramfs --compress-initramfs --compress-initrd --compress-initramfs-type=best --loglevel=5 --color --no-mrproper --no-clean --no-postclear --oldconfig
+
+#nvmTODO: run as portage
+#$ time sudo -u portage -- genkernel all --bootdir="/boot" --install --symlink --no-splash --no-mountboot --makeopts="-j4" --no-keymap --no-lvm  --no-mdadm --no-dmraid --no-zfs --no-multipath --no-iscsi --disklabel --no-luks --no-gpg --no-netboot --no-unionfs  --no-firmware --no-integrated-initramfs --compress-initramfs --compress-initrd --compress-initramfs-type=best --loglevel=5 --color --no-mrproper --no-postclear --oldconfig --kernel-outputdir=/tmp/blaaaa --clean
+
+#--makeopts="-j4 V=0"
+# --save-config Saves the kernel configuration to /etc/kernels if the kernel is successfully compiled. // this will not work unless genkernel compilation is running as root! and it's not, it's running as _kernelbuilder user, actually $buildasuser var!
+#export CCACHE_LOGFILE="/tmp/ccache_$buildasuser.log" #creates /tmp/ccache__kernelbuilder.log  keep this unset!
+#export CCACHE_DEBUG=1  #0 won't work here!
+export CCACHE_NODEBUG=true
+#^ that will make ccache wants to create /dev/null.ccache-log for commands like this "/usr/bin/ccache gcc -Os -pipe -fomit-frame-pointer -Wold-style-definition -O2 -S -o /dev/null -xc /dev/null"  TODO: fix this in ccache!
+export CCACHE_NOCOMPRESS=1
+export CCACHE_COMPRESSLEVEL=0
+homedir_of_buildasuser="$(getent passwd "$buildasuser" |cut -d: -f6)"
+if test -z "$homedir_of_buildasuser"; then
+  echo "!! Can't get the \$HOME of user '$buildasuser' via 'getent' (got empty), trying 'grep'..." >&2
+  homedir_of_buildasuser="$(grep -- "^${buildasuser}" /etc/passwd | cut -d: -f6)"
+  if test -z "$homedir_of_buildasuser"; then
+    echo "!! Can't get the \$HOME of user '$buildasuser' via 'grep' (got empty), aborting..." >&2
+    exit 1
+  fi
+  if ! test -d "$homedir_of_buildasuser"; then
+    echo "!! The \$HOME of user '$buildasuser' aka '$homedir_of_buildasuser' is not a dir, aborting..." >&2
+    exit 1
+  fi
+  if ! test -w "$homedir_of_buildasuser"; then
+    echo "!! The \$HOME of user '$buildasuser' aka '$homedir_of_buildasuser' is not writable by current user aka '`id`', aborting..." >&2
+    exit 1
+  fi
+fi
+#FIXME: --sandbox genkernel arg will prevent using the $buildasuser .ccache dir when it builds the utils like busybox, so eg. --utils-cc="/usr/bin/ccache gcc"  BUT NO PROBLEMS with/when --kernel-cc='/usr/bin/ccache gcc'!!
+#export CCACHE_DIR="/home/$buildasuser/.ccache/"
+#export CCACHE_DIR="${homedir_of_buildasuser}/.ccache" #this is the default .ccache dir location!
+#XXX: ^ do not set CCACHE_DIR or it will be used by genkernel when compiling utils(eg. busybox, for initramfs) also!
+
+sandbox_conf_file="/etc/sandbox.conf" #XXX: using this as a workaround, for now! can't use /etc/sandbox.d/*
+#FIXME: some sandbox-2.18 bug(well, inherited feature from 2006 actually) prevents this /etc/sandbox.d/80_regenkernel from working, because genkernel already sets SANDBOX_WRITE in env. so sandbox.d is ignored, only sandbox.conf is processed! so check if this was fixed some time in the future! https://gitweb.gentoo.org/proj/sandbox.git/tree/src/environ.c#n132
+#sandbox_conf_file="/etc/sandbox.d/80_regenkernel" #genkernel uses this sys-apps/sandbox-2.18 (/usr/bin/sandbox)  when --sandbox arg is used, but only for the utils compilation, apparently, eg. --utils-cc= ....
+export CCACHE_DIR_FOR_GENKERNEL_UTILS="${homedir_of_buildasuser}/.ccache.for_genkernel_utils"
+#if test \! -r "$sandbox_conf_file"; then
+#  cat >"$sandbox_conf_file" <<EOF
+##for /home/user/bin/regenkernel  (writes to the following dir(and its subdirs/files) is allowed, so that genkernel can use ccache when building utils like busybox and using args --sandbox and --utils-cc="/usr/bin/ccache gcc")
+#SANDBOX_WRITE="$CCACHE_DIR_FOR_GENKERNEL_UTILS"
+#EOF
+#fi
+
+if ! grep -- "^SANDBOX_WRITE=\"$CCACHE_DIR_FOR_GENKERNEL_UTILS\"" "$sandbox_conf_file"; then
+  cat >>"$sandbox_conf_file" <<EOF
+#autoadded by '$0' for /home/user/bin/regenkernel  (writes to the following dir(and its subdirs/files) is allowed, so that genkernel can use ccache when building utils like busybox and using args --sandbox and --utils-cc="/usr/bin/ccache gcc")
+SANDBOX_WRITE="$CCACHE_DIR_FOR_GENKERNEL_UTILS"
+EOF
+fi
+if ! grep -- "^SANDBOX_WRITE=\"$CCACHE_DIR_FOR_GENKERNEL_UTILS\"" "$sandbox_conf_file"; then
+  echo "!! failed to add sandbox permission for dir '$CCACHE_DIR_FOR_GENKERNEL_UTILS'" >&2
+  exit 1
+fi
+
+sudo -u "$buildasuser" -g "$buildasuser" -- mkdir -p "$CCACHE_DIR_FOR_GENKERNEL_UTILS"
+export CCACHE_NOREADONLY=1
+export CCACHE_TEMPDIR="/tmp"
+#unset CCACHE_READONLY
+export CCACHE_NOHARDLINK=1
+export CCACHE_NOHASHDIR=1
+export CCACHE_SLOPPINESS=include_file_mtime,file_stat_matches,include_file_ctime,file_stat_matches_ctime
+
+#Figure out if we have to clean first: if kernel version changed via `eselect kernel set #` then yes, otherwise no: (thanks to <ionen> on #gentoo freenode irc for making me realize this was the reason why)
+alreadyexitingKV="$(cat "$kerneloutdir/include/generated/utsrelease.h" |cut -d'"' -f2|cut -d- -f1)" #gives 5.6.2
+abouttobuildKV="$(stat --format=%N -- "${kernelsourcesdir}" | cut -d"'" -f4|cut -f2 -d-)" #TODO: ensure dir passed to stat must not have end / 
+shouldclean="--no-clean"
+if ! [[ x"$abouttobuildKV" =~ x[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+  echo "!! Can't determine the kernel version to build, got '$abouttobuildKV'" >&2
+  exit 1
+fi
+if test -n "$alreadyexitingKV"; then
+  if ! [[ x"$alreadyexitingKV" =~ x[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+    echo "!! Can't determine the exiting kernel version built, got '$alreadyexitingKV'" >&2
+    exit 1
+  fi
+  if test "$alreadyexitingKV" != "$abouttobuildKV"; then
+    shouldclean="--clean"
+    echo "!! existing built kernel version '$alreadyexitingKV' differs from about to be built one '$abouttobuildKV', thus forcing '$shouldclean' arg to genkernel" >&2
+  else
+    echo "!! same kernel version '$alreadyexitingKV', will thus use '$shouldclean' arg to genkernel"
+  fi
+else
+  echo "!! Using '$shouldclean' arg to genkernel because this is first time(no built kernel exists) thus it doesn't matter."
+fi
+#--disklabel got removed.
+set -vx
+time sudo "--preserve-env=CCACHE_DEBUG,CCACHE_LOGFILE,LANG,CCACHE_NOCOMPRESS,CCACHE_COMPRESSLEVEL,CCACHE_DIR,CCACHE_NOREADONLY,CCACHE_TEMPDIR,CCACHE_NOHARDLINK,CCACHE_NOHASHDIR,CCACHE_SLOPPINESS,CCACHE_NODEBUG,CCACHE_DIR_FOR_GENKERNEL_UTILS" -u "$buildasuser" -g "$buildasuser" -- genkernel all --kernel-outputdir="$kerneloutdir" --bootdir="$tmpoutbootdir" --install --symlink --no-splash --no-mountboot --no-keymap --no-lvm  --no-mdadm --no-dmraid --no-zfs --no-multipath --no-iscsi --no-luks --no-gpg --no-netboot --no-unionfs  --no-firmware --no-integrated-initramfs --compress-initramfs --compress-initramfs-type=xz --loglevel=5 --color --no-mrproper --no-postclear --oldconfig "$shouldclean" --no-save-config --no-module-rebuild --strip=none --kernel-modules-prefix="$moduleprefixdir" --sandbox --logfile="$logfile" --kernel-make="make" --kernel-cc='/usr/bin/ccache gcc' --utils-cc="/usr/bin/ccache gcc" --utils-cxx="/usr/bin/ccache g++" --tmpdir="$genkerneltmpdir" --cachedir="$genkernelcachedir" "${SAFETYARGS[@]}" "${DEBUGARGS[@]}" "$@" ; ec="$?"
+#note: --compress-initramfs-type=best is =xz and =zstd is way larger(about 1meg, from 3.9M(xz) to 4.9M(zstd))!
+#XXX: because using xz(aka lzma?) compression have to emerge kexec-tools with lzma USE flag
+set +vx
+if test "$ec" -ne "0"; then
+  echo "!! genkernel (as non-root) failed, exit code: '$ec'"
+  exit "$ec"
+fi
+#time sudo -- genkernel all --kernel-outputdir="$kerneloutdir" --bootdir="/boot" --install --symlink --no-splash --no-mountboot --no-keymap --no-lvm  --no-mdadm --no-dmraid --no-zfs --no-multipath --no-iscsi --disklabel --no-luks --no-gpg --no-netboot --no-unionfs  --no-firmware --no-integrated-initramfs --compress-initramfs --compress-initramfs-type=best --loglevel=5 --color --no-mrproper --no-postclear --oldconfig --no-clean --save-config --no-module-rebuild --strip=none --module-prefix="$moduleprefixdir" --sandbox "$@"
+#--no-clear-cachedir --cachedir="$kernelcachedir"
+# XXX: warning: using --makeopts="-j4 V=0" is taken by genkernel as "-j4 0" and thus will fail to make!
+#XXX: don't use --makeopts at all, it will use the one from /etc/portage/make.conf (at least, so it seems from /etc/genkernel.conf 's defaults), confirmed!
+# XXX: warning: --oldconfig implies --no-clean so if you want to specify/change --no-clean into --clean later on, you have to ensure it's the last arg! doing it now...
+#ec="$?"
+#if test "$ec" -ne "0"; then
+#  echo "!! genkernel install (as root) failed $ec"
+#  exit "$ec"
+#fi
+echo "!! Done genkernel"
+for i in $(find "/home/$buildasuser/.ccache/" "$genkerneltmpdir" "$kerneloutdir" "$moduleprefixdir" "$genkernelcachedir" \( -uid 0 -or -gid 0 \) -or \! -user "$buildasuser" -or \! -group "$buildasuser" ); do
+  #^ that seems redundant if you assume that $buildasuser is not "root"
+  echo "!! Found file not owned (user:group) by '$buildasuser:$buildasuser': $i" >&2
+  read -r -p "Press Enter to continue..."
+  #exit 1
+done
+#TODO: find out what chowns these two files (note, pass --no-cleanup to $0 to see them after $0 is done!):
+#-rw-r--r-- 1 root root 352 Apr  1 04:09 /var/tmp/genkernel/gk_h4CxMTw4/initramfs-final/etc/ld.so.cache
+#lrwxrwxrwx 1 root root  13 Apr  1 04:09 /var/tmp/genkernel/gk_h4CxMTw4/initramfs-final/lib/libnss_dns.so.2 -> libnss_dns.so
+#-rwxr-xr-x 1 _kernelbuilder _kernelbuilder 152552 Apr  1 04:04 /var/tmp/genkernel/gk_h4CxMTw4/initramfs-final/lib/libnss_dns.so
+#(yes there are other symlinks which are non-root owned, eg.
+#lrwxrwxrwx 1 _kernelbuilder _kernelbuilder 48 Apr  1 04:04 /var/tmp/genkernel/gk_h4CxMTw4/btrfs-progs_RlZc6vvQ/home/.ccache -> /home/_kernelbuilder/.ccache.for_genkernel_utils
+#lrwxrwxrwx 1 _kernelbuilder _kernelbuilder 7 Apr  1 04:03 /var/tmp/genkernel/gk_h4CxMTw4/initramfs-busybox-temp/bin/uname -> busybox
+#)
+#because it's not ldconfig(that makes them be root-owned, hmm maybe 'sandbox' does it lazily ie. after it's done/exits for all files created with SANDBOX_ON=0):
+#-rw-r--r-- 1 _kernelbuilder _kernelbuilder 103406 Apr  1 04:41 /var/tmp/genkernel/gk_2KTsTThL/initramfs-final/etc/ld.so.cache
+#here ldconfig is executed in /usr/share/genkernel/gen_initramfs.sh:1847
+#-rw-r--r-- 1 _kernelbuilder _kernelbuilder 352 Apr  1 04:41 /var/tmp/genkernel/gk_2KTsTThL/initramfs-final/etc/ld.so.cache
+
+
+##warning: this 'cp' command relies on shell expansion:
+#shopt -s failglob
+##^ want to exit/fail if the * doesn't expand to anything, indicating a bug somewhere else!
+#set +o noglob
+##^ should be already on! unless 'set -f' or 'set -o noglob' was executed! but otherwise it's on by default, eg. '$ echo *' will expand(if any files in current dir)!
+##will copy files that genkernel put into "$tmpoutbootdir" over into /boot  (as root), we're already root, but still calling 'sudo' for some reason xD
+#set -vex
+#sudo --  cp --preserve=all --no-dereference --no-preserve=ownership --target-directory="$installtobootdir" -- "$tmpoutbootdir"/*
+#set +vex
+
+#this 'cp' does NOT rely on shell expansion:
+set -vex
+sudo -- cp --update -r --preserve=all --no-dereference --no-preserve=ownership --no-target-directory -- "$tmpoutbootdir" "$installtobootdir"
+set +vex
+
+#now must also copy over the modules
+if test -z "$moduleprefixdir" -o -z "$installmodulestodir"; then
+  echo "!! Empty vars: moduleprefixdir='$moduleprefixdir', installmodulestodir='$installmodulestodir'" >&2
+  exit 1
+fi
+kerneldirname="$(find "${moduleprefixdir}/${installmodulestodir}/" -maxdepth 1 -type d -printf '%P\n' |sort|tail -n1)" #eg. 5.5.4-gentoo-x86_64
+#^ here, there may be more than 1 dir! eg. (one empty line as first line) then 5.10.12-gentoo as 2nd line then 5.10.12-gentoo-x86_64 as third so we pick last via tail -n1 and ignore the empty one at head -1
+#must first remove already-existing ones, if any, just so the old module files(from prev. kernel of the same name) don't keep existing:
+if test -z "$installmodulestodir" -o -z "$kerneldirname"; then
+  echo "!! Empty vars: installmodulestodir='$installmodulestodir', kerneldirname='$kerneldirname'" >&2
+  exit 1
+fi
+if [[ "$kerneldirname" =~ / ]]; then
+  echo "\$kerneldirname has a / '$kerneldirname'"
+  exit 1
+fi
+set -vex
+rm -rf -- "${installmodulestodir}/${kerneldirname}"
+sudo mkdir -p "$installmodulestodir"
+sudo -- cp -r --preserve=all --no-dereference --no-preserve=ownership --target-directory="${installmodulestodir}" -- "${moduleprefixdir}/${installmodulestodir}/${kerneldirname}"
+set +vex
+#and delete them, just in case a new kernel will be rebuilt later on, without rebooting first and thus NOT having /tmp emptied, we can't have modules which were potentially removed from .config still lingering around and copied to the system from the previous kernel build!
+rm -rf -- "$moduleprefixdir"
+#exit 22
+
+#nvmTODO: what was supposed to be executing those in postinst.d ? we're clearly doing it manually here. XXX: u+rwx for root, but for nothing else! so this shows them: sudo -u root -- run-parts --verbose --exit-on-error --test /etc/kernel/postinst.d   but now I've to make them +x for portage!
+#XXX ok, the files in /etc/kernel/postinst.d (dir owned by sys-kernel/installkernel-gentoo-2 package which only owns the formerly debianutils package's /sbin/installkernel) are executed when installkernel is executed and that's only when "It is called by the Linux kernel makefiles when make install is invoked there."
+
+#shellcheck disable=SC2207
+list=( $(find /etc/kernel/postinst.d -type f -executable | sort  --general-numeric-sort) )
+echo "!! Found executables: ${list[*]}"
+for i in "${list[@]}"; do
+  ec="-1"
+  while test "0" -ne "$ec"; do
+    echo "!! Executing: '$i'"
+    time $i ; ec="$?"
+    echo "!! Exit code: $ec"
+    if test "$ec" -ne "0"; then
+      echo "!! something went wrong(exit code:'$ec'), fix it then press Enter to retry executing '$i' or press C-c now."
+      #exit $ec
+      time read -r -s -p '!! Press Enter to re-execute that  or C-c to cancel'
+    fi
+  done
+done
+
+#if mount |grep -- /bewt ; then
+#  echo "!! unmounting /bewt"
+#  #set -e #wtf this had no effect! when umount failed(ec 32) due to /bewt being in use
+#  umount /bewt && cryptsetup --verbose luksClose /dev/mapper/luks_on_sda2_boot
+#  ec="$?"
+#  echo "!! exit codes: ${PIPESTATUS[@]}"
+#  if test "$ec" -ne 0; then
+#    echo "!! umounting failed! exit code: $ec"
+#    exit "$ec"
+#  fi
+##  set +e
+#else
+#  echo "!! /bewt already unmounted, moving on..."
+#fi
+
+echo "!! sync-ing"
+sync
+echo "$(tput setab 1;tput setaf 0)!! $0 done successfully.$(tput sgr0)"
+

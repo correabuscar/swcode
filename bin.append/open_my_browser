@@ -1,0 +1,14 @@
+#!/bin/bash
+
+exe="/swcode/bin.prepend/fox"
+if ! test -x "$exe"; then
+  exe="fox"
+fi
+
+#XXX: nothing works because it can't communicate to the already running bwrap-ed firefox! and won't start a new session either! And then you'd need to have that local path (eg. `cargo doc --open`) shared when using bwrap!
+#set -vx
+#"$exe" --new-instance --browser --disable-pinch --no-remote -- "$@"
+#"$exe" --browser --disable-pinch -- "$@"
+echo "$@"
+#set +vx
+

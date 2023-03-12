@@ -1,0 +1,2 @@
+#!/bin/bash
+regenkernel -other make nconfig || echo "you've to run regenkernel once to get the code into /tmp, FIXME; ignore this msg if you see config diff above!"

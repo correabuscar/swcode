@@ -1,0 +1,16 @@
+#!/bin/bash
+
+repoloca=/tmp/swcode_dir_for_push_as_user
+mkdir -p -- "$repoloca"
+if test "$PWD" != "/swcode"; then
+  echo "$PWD is unexpected as cwd, do cd /swcode first!"
+  exit 1
+fi
+
+rsync -a --chown=user:user -- .git "$repoloca"
+chown user:user -- "$repoloca"
+pushd "$repoloca"
+sudo -u user -g user --login -- bash -c "cd \"$repoloca\" && git push"
+ec="$?"
+popd
+exit "$ec"
