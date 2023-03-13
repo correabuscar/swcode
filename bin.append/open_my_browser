@@ -9,6 +9,6 @@ fi
 #set -vx
 #"$exe" --new-instance --browser --disable-pinch --no-remote -- "$@"
 #"$exe" --browser --disable-pinch -- "$@"
-echo "$@"
+echo "$@" >> /tmp/open_my_browser.urls.txt
 #set +vx
 
