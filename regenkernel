@@ -338,5 +338,5 @@ done
 
 echo "!! sync-ing"
 sync
-echo "$(tput setab 1;tput setaf 0)!! $0 done successfully.$(tput sgr0)"
+echo "$(tput setab 2;tput setaf 0)!! $0 done successfully.$(tput sgr0)"
 
