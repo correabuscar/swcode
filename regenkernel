@@ -37,6 +37,8 @@ if ! test -d "$kerneloutdir"; then
   sudo install -m0775 --owner="$buildasuser" --group="$buildasuser" -d -- "$kerneloutdir"
   set +evx
 fi
+#Sometimes something like emerge creates "$kerneloutdir" when no dir is detected due to KBUILD_OUTPUT being set by something like files in /etc/portage/env/ , so must change it from root:root
+sudo chown "$buildasuser:$buildasuser" -- "$kerneloutdir"
 #copy the kernel .config from /usr/src/.config into the $kerneloutdir if not already there!
 if ! test -f "${kerneloutdir}/.config"; then
   set -evx
