@@ -11,8 +11,10 @@ ideal_group_id="$(getent group -- "${ideal_group}" | cut -f3 -d:)"
 #
 #this is a script to run after copying in some new patches which will no doubt have wrong user:user perms instead of root:root and to also ensure all dirs are accessible by portage user(in our case, o+rx)
 
-if test "$(basename `pwd`)" != "swcode"; then
-  echo "Fail-safe: current dir unexpected, aborting to avoid any damage to other areas" >&2
+#if test "$(basename `pwd`)" != "swcode"; then
+#XXX: this $0 script is world executable, so u can type 'reperm' (or wtw '$0' is named in the future) and it runs in wtw current dir is!
+if test "$(pwd)" != "/swcode"; then
+  echo "Fail-safe: current dir unexpected, aborting to avoid any damage to other areas. Should be ran only in /swcode" >&2
   exit 1
 fi
 

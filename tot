@@ -1,0 +1,23 @@
+#!/bin/bash
+
+source "/swcode/swcode.bash"
+rerunasroot "$@"
+
+
+#FIXME: dir(s) can be specified as args, but 'find' below will use pwd instead!
+
+#sudo -v
+du --one-file-system -c -s --si -P --apparent-size "$@"
+#--apparent-size "$@"
+#-BK
+    #nvmXXX: ok don't use --apparent-size or --bytes or --block-size=1 because no need! Thanks to kurahaupo on #linux freenode for telling me that 'du' doesn't count links more than once (eg. due to btrfs COW)
+    #XXX: actually, --apparent-size is needed! sadly! else a freshly clones repo shows only 36M instead of 146M
+
+if test "${0##*/}" == "totfull"; then
+  #have to sync, else it only sees what's sync'd which could be far less in size:
+  sync
+  compsize --one-file-system "${@:-.}"
+else
+  echo "$(find -P "${@:-.}" -type f|wc -l) files."
+  #^ oh actually compsize already says how many files!
+fi

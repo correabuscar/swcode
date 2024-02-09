@@ -1,0 +1,35 @@
+#!/bin/bash
+
+this_scripts_filename="$(basename "$0")" #eg. diffkconfigs/diffkconfigs_ns/diffkconfigs_sort (due to symlinks)
+if [[ "${this_scripts_filename}" =~ ns ]] && ! [[  "${this_scripts_filename}" =~ sort ]]; then
+  #eg. diffkconfigs or diffkconfigs_sort
+  SORTIFY=0
+else
+  #eg. diffkconfigs_ns
+  SORTIFY=1
+fi
+echo "Comparing:"
+echo "--- '$1'"
+echo "+++ '$2'"
+
+# shellcheck disable=SC2120
+sortify() {
+  if test "$SORTIFY" == "1"; then
+    sort --key=1 --field-separator=' ' --parallel=4 --unique "$@"
+  else
+    cat
+  fi
+}
+#diff -u0 <(sortify "$1") <(sortify "$2") |grep -v "\+\#"|grep -v "\-\#" | grep -v "^\@\@"|grep -v "^\+$"|grep -v "^\-$" | colordiff
+RED="$(tput setaf 2)"
+GREEN="$(tput setaf 1)"
+COMMENT="$(tput setaf 8)"
+#Basic vs Extended Regular Expressions
+# In basic regular expressions the meta-characters ?, +, {, |, (, and ) lose their special meaning; instead  use the backslashed versions \?, \+, \{, \|, \(, and \).
+# src: man 1 grep
+diff -u0 <(cat "$1"|sort) <(cat "$2"|sort) |grep -v "^@@"|grep -v "^+$"|grep -vE '^[-+]#?\s*$'|sed -re 's|^([+-])#\s*(.*$)|\1\2|'|grep -E '^[-+](CONFIG_|[+-]{2})'|sortify| sed -re "s|^\+(.*)( is not set.*)|\+${COMMENT}\1${RED}\2|" | sed -re "s|^\-(.*)( is not set.*)|\-${COMMENT}\1${GREEN}\2|" | sed -re "s|^(---).*|--- $1|; s|^(\+\+\+).*|+++ $2|" | colordiff
+
+#ok bad way, must not sort the diff, but the source files first! or else some things would show up as + whhen in fact they are not + nor - but just in a different position in the file!
+#diff -u0 "$1" "$2" |grep -v "\+\#"|grep -v "\-\#" | grep -v "^\@\@"|grep -v "^\+$"|grep -v "^\-$"|grep -Ev '^(\+\+\+|---) '|sed -re 's/^([+-])(.*)/\1 \2/g'| sort --key=2 --field-separator=' ' --parallel=4 --unique
+#|colordiff
+
