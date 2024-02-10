@@ -114,6 +114,7 @@ prefix=(
   #XXX must use same path or else ./go script from eg. /home/user/SOURCE/browser.stuff/both/uBlock/go will point to wrong path when attempting to auto-install the just compile addon!
   --ro-bind /home/user/SOURCE/browser.stuff/both/https-everywhere/https-everywhere/pkg /home/user/SOURCE/browser.stuff/both/https-everywhere/https-everywhere/pkg
   --ro-bind /home/user/SOURCE/browser.stuff/both/decentraleyes /home/user/SOURCE/browser.stuff/both/decentraleyes
+  --ro-bind /home/user/SOURCE/browser.stuff/firefox.stuff/darkreader /home/user/SOURCE/browser.stuff/firefox.stuff/darkreader
 
   #--setenv DISPLAY "$DISPLAY" #not needed!
   #"Error: cannot open display: :0" unless I do this:
