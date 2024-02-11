@@ -115,6 +115,7 @@ prefix=(
   --ro-bind /home/user/SOURCE/browser.stuff/both/https-everywhere/https-everywhere/pkg /home/user/SOURCE/browser.stuff/both/https-everywhere/https-everywhere/pkg
   --ro-bind /home/user/SOURCE/browser.stuff/both/decentraleyes /home/user/SOURCE/browser.stuff/both/decentraleyes
   --ro-bind /home/user/SOURCE/browser.stuff/firefox.stuff/darkreader /home/user/SOURCE/browser.stuff/firefox.stuff/darkreader
+  --ro-bind /home/user/SOURCE/browser.stuff/firefox.stuff/Cookie-AutoDelete.ff.xpi /home/user/SOURCE/browser.stuff/firefox.stuff/Cookie-AutoDelete.ff.xpi
 
   #--setenv DISPLAY "$DISPLAY" #not needed!
   #"Error: cannot open display: :0" unless I do this:
