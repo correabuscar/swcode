@@ -1,0 +1,74 @@
+#!/bin/bash
+
+source "/swcode/swcode.bash"
+
+rerunasroot "$@"
+
+if is_archlinux; then
+if ! pacman -Qo makedumpfile; then
+  echo "!! WARNING: /usr/bin/makedumpfile doesn't exist. You've to install it or no crashdumps will be generated when kernel crashes! See /home/user/build/1packages/4used/makedumpfile/ " >&2
+  exit 2
+fi
+fi
+
+#as per: https://wiki.archlinux.org/index.php/Kdump#Analyzing_core_dump
+# shellcheck disable=SC2230
+if ! which crash >/dev/null 2>&1; then
+  echo "not found command 'crash', installing..."
+  sudo pacman -S crash
+  ec="$?"
+  if test "$ec" -ne "0"; then
+    echo "failed"
+    exit "$ec"
+  fi
+fi
+
+getlatestdumpfile="$(find '/var/crash/' -name 'crashdump-*' -and -type f -and -printf '%T@ %p\n' | sort -n | tail -n1|cut -f2 -d' ')"
+if test -z "$getlatestdumpfile" -o ! -e "$getlatestdumpfile"; then
+  echo "!! Can't find latest dump file '$getlatestdumpfile'. Maybe none were generated yet!" >&2
+  exit 1
+fi
+#FIXME: should be the latest vmlinux that is younger than the crash! eg. from this list:
+#-rw-r--r-- 1 root root  1027330512 29.01.2021 00:15 vmlinux-5.10.11-gentoo-x86_64-2021-01-29-00_23_49
+#-rw------- 1 root root 58535515920 29.01.2021 00:29 crashdump-2021-01-29-00_28_42
+#-rw-r--r-- 1 root root  1108204704 29.01.2021 01:30 vmlinux-5.10.11-gentoo-x86_64-2021-01-29-01_35_09
+#it should find the vmlinux-5.10.11-gentoo-x86_64-2021-01-29-00_23_49  one!
+getlatestvmlinuxfile="$(find '/var/crash/' -name "vmlinux-$(uname -r)-*" -and -type f -and -printf '%T@ %p\n' | sort -n | tail -n1|cut -f2 -d' ')"
+if test -z "$getlatestvmlinuxfile" -o ! -e "$getlatestvmlinuxfile"; then
+  echo "!! Can't find any/latest vmlinux file '$getlatestvmlinuxfile'. Maybe none were generated yet!" >&2
+  exit 1
+fi
+#analyze the latest saved crash file
+#XXX this runs as root:
+#removed debug args: -d 255
+#true on archlinux: crash "/usr/lib/modules/$(uname -r)/build/vmlinux" "$getlatestdumpfile"
+set -vx
+crash "$getlatestvmlinuxfile" "$getlatestdumpfile" ; ec="$?"
+set +vx
+#TODO: use /var/crash/vmlinux-$(uname -r)-$crashdate   as kernel which got saved by /etc/systemd/system/kdump-save.service!
+#--zero_excluded
+
+#XXX commands when used like `sudo crash "/usr/lib/modules/$(uname -r)/build/vmlinux"` (ie. without dump)
+#show source code lines:
+#bt -l pidnum
+#or without arg 'pidnum' it works also.
+#show better stacktraces than sysrq+w, sysrq+l:
+#bt -Tsx pidnum
+# crash> bt -sFlxg
+#
+#* in 'crash' (gdb) in order to get file:line of symbol/address, you've to:
+#bt -l
+#shows kernel file:line but not [vboxdrv] frames' file:line
+# #5 [ffffb3294a0ebc80] asm_exc_page_fault at ffffffff9a400acb
+#    /usr/src/linux-5.10.11-gentoo/arch/x86/include/asm/idtentry.h: 583
+# #6 [ffffb3294a0ebca0] rtR0TermNative at ffffffffc0240080 [vboxdrv]
+# #7 [ffffb3294a0ebcd8] __apply_to_page_range at ffffffff992838a1
+#    /usr/src/linux-5.10.11-gentoo/include/linux/spinlock.h: 354
+#
+#so you run 'mod' see BASE address of 'vboxdrv' as ffffffffc022b000 then run: (add 0x for address!)
+#crash> add-symbol-file /usr/lib/debug/lib/modules/5.10.11-gentoo-x86_64/misc/vboxdrv.ko.debug 0xffffffffc022b000
+#then this will work:
+#crash> info line *rtR0TermNative+0xd0
+#Line 540 of "/usr/src/debug/app-emulation/virtualbox-modules-6.1.18/vboxdrv/r0drv/linux/memobj-r0drv-linux.c" starts at address 0xffffffffc0240080 <rtR0MemObjLinuxApplyPageRange> and ends at 0xffffffffc0240084 <rtR0MemObjLinuxApplyPageRange+4>.
+#
+exit "$ec"
