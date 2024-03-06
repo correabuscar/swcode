@@ -3,6 +3,7 @@
 source "/swcode/swcode.bash"
 set_xfce4_terminal_title "`basename "$0"` in pwd='`pwd`'"
 
+#XXX: any env. vars should be set in the --setenv of bwrap (see below), else they'll be cleared inside bwrap!
 #export LANG=C
 
 export MOZ_ENABLE_WAYLAND=1
@@ -18,6 +19,11 @@ export JSGC_DISABLE_POISONING=1
 #
 #before starting the browser.
 
+#attempt:don't autoload some system packages placed plugins! - this doesn't work
+#so this must be inexistent path
+export MOZ_PLUGIN_PATH="/cS77ELTjgJWYoI0RzSKq{$RANDOM}${SRANDOM}" #tried: /
+#^ but this is the default:export MOZ_PLUGIN_PATH="/usr/lib/mozilla/plugins", supposedly, when mozilla-common package is installed!
+
 #fflogfile="/tmp/ff.out.log"
 #exec > "$fflogfile" 2>&1
 downloadsdironhost="${HOME}/Downloads.bwrapped"
@@ -25,8 +31,8 @@ mkdir -p -- "${downloadsdironhost}"
 
 #TODO: do I need this dir?  Error: Could not get children of file(/home/user/.cache/mozilla/firefox/zo5gqb5l.default-release/thumbnails) because it does not exist from ctrl+shift+J if left open and firefox is restarted.
 
-if test -n "$UID" -a "$UID" != "1000"; then
-  echo "UID aka user id isn't 1000, this is unexpected but should still work! UID=$UID, id -u is $(id -u)" >&2
+if test -n "$UID" -a "$UID" != "1000" -o "$UID" != "$(id -u || /usr/bin/id -u)"; then
+  echo "UID aka user id isn't 1000 or isn't same as 'id -u', this is unexpected but should still work! UID=$UID, id -u is $(id -u || /usr/bin/id -u)" >&2
   echo "actually, bailing out for now..."
   exit 1
 fi
@@ -51,8 +57,58 @@ prefix=(
   # --dev-bind /dev/log /dev/log  required so that the dns lookup requests can be logged (via openlog() and syslog() from glibc, to host's dmesg!), because --dev /dev  just uses a new one I guess.
   --unshare-pid
   --unshare-user
-  #no net with this, wonder why:
+  #no net with this(only 'lo' interface is up, no routes, but also no root to can set them up)
   #--unshare-net
+  --share-net
+  --unshare-ipc
+  --unshare-uts
+  --unshare-cgroup
+  --unshare-pid
+  --disable-userns --assert-userns-disabled
+
+  --clearenv
+  --setenv "HOME" "${HOME:=/home/user}"
+  --setenv "USER" "${USER:="user"}"
+  --setenv "LOGNAME" "${LOGNAME:="$USER"}"
+  --setenv "UID" "${UID:="$(id -u || /usr/bin/id -u)"}" #the $() executes only when needed aka if null/unset env. var!
+  --setenv "EUID" "${EUID:="$UID"}"
+  #GROUPS=()
+  --setenv "XDG_CACHE_HOME" "${XDG_CACHE_HOME:=/tmp}"
+  --setenv "XDG_CONFIG_DIRS" "${XDG_CONFIG_DIRS:=/etc/xdg:/usr/share}"
+  --setenv "XDG_CONFIG_HOME" "${XDG_CONFIG_HOME:=${HOME}/.config}"
+  --setenv "XDG_DATA_DIRS" "${XDG_DATA_DIRS:=/usr/local/share:/usr/share}"
+  --setenv "XDG_DATA_HOME" "${XDG_DATA_HOME:=${HOME}.local/share}"
+  --setenv "XDG_RUNTIME_DIR" "${XDG_RUNTIME_DIR:=/run/${USER}/${UID}}"
+  --setenv "XDG_SEAT" "${XDG_SEAT:=seat0}"
+  --setenv "XDG_SESSION_CLASS" "${XDG_SESSION_CLASS:=user}"
+  --setenv "XDG_SESSION_ID" "${XDG_SESSION_ID:=2}"
+  --setenv "XDG_SESSION_TYPE" "${XDG_SESSION_TYPE:=tty}"
+  --setenv "XDG_VTNR" "${XDG_VTNR:=1}"
+  #TODO: see which XDG_* aren't actually needed!
+  --setenv "XAUTHORITY" "${XAUTHORITY:=${HOME}/.Xauthority}"
+  --setenv "TMPDIR" "${TMPDIR:=/tmp}"
+  #TERM=alacritty
+  #TERMINFO=/home/user/.terminfo
+  --setenv "RUST_BACKTRACE" "${RUST_BACKTRACE:=1}"
+  --setenv "PWD" "${PWD:=/tmp}"
+  #OPENGL_PROFILE=xorg-x11
+  --setenv "MOZ_PLUGIN_PATH" "${MOZ_PLUGIN_PATH:="/cS77ELTjgJWYoI0RzSKq{$RANDOM}${SRANDOM}"}"
+  --setenv "JSGC_DISABLE_POISONING" "${JSGC_DISABLE_POISONING:=1}"
+  --setenv "MOZ_ENABLE_WAYLAND" "${MOZ_ENABLE_WAYLAND:=1}"
+  --setenv "LADSPA_PATH" "${LADSPA_PATH:=/usr/lib64/ladspa}" #used by ffmpeg(and sox) at least which is used by firefox
+  #QT_PLATFORM_PLUGIN=lxqt
+  #QT_QPA_PLATFORMTHEME=lxqt
+  #GSETTINGS_BACKEND=dconf
+  #GTK2_RC_FILES=/home/user/.gtkrc-2.0
+  #GTK_CSD=0
+  #GTK_MODULES=canberra-gtk-module
+  #GTK_OVERLAY_SCROLLING=0
+  #GTK_THEME=Breeze:Dark
+  --setenv "DISPLAY" "${DISPLAY:=":0"}"
+
+
+
+  --setenv "LANG" "${LANG:=en_US.utf8}" #the := also sets LANG if it's unset or null, as opposed to :- which doesn't.
 
   --ro-bind /etc /etc
 
@@ -60,7 +116,8 @@ prefix=(
   #--ro-bind /var /var
   #--bind /run /run  #yes this makes the sound work in firefox/youtube, but need a more limited one:
   #yes this makes the youtube audio work:
-  --ro-bind "/run/user/$(id -u)/pulse" "/run/user/$(id -u)/pulse"
+  #--ro-bind "/run/user/$(id -u)/pulse" "/run/user/$(id -u)/pulse"
+  --ro-bind "${XDG_RUNTIME_DIR:="/run/${USER:="user"}/${UID}"}/pulse" "${XDG_RUNTIME_DIR}/pulse"
   #prev. tries:
 #  --ro-bind /run/udev /run/udev
 #  --ro-bind /run/systemd /run/systemd
@@ -68,17 +125,15 @@ prefix=(
 #  --ro-bind /run/initctl /run/initctl
 #  --ro-bind /run/utmp /run/utmp
 #  --ro-bind /run/media /run/media
-#  --bind /run/dbus /run/dbus
-#  #--bind /run/dbus /run/dbus
 #  #--bind /var/lock /var/lock
 #  --bind /run/lock /run/lock
 #  --bind /run/dmeventd-server /run/dmeventd-server
 #  --bind /run/dmeventd-client /run/dmeventd-client
 
 
-  --ro-bind /home/user/.config/mimeapps.list /home/user/.config/mimeapps.list
+  --ro-bind "${HOME}/.config/mimeapps.list" "${HOME}/.config/mimeapps.list"
   #^ because this ^ is a symlink to:
-  --ro-bind /home/user/bin/confHOME//home/user/.config/mimeapps.list /home/user/bin/confHOME//home/user/.config/mimeapps.list
+  --ro-bind "${HOME}/bin/confHOME/${HOME}/.config/mimeapps.list" "${HOME}/bin/confHOME/${HOME}/.config/mimeapps.list"
 
   #--ro-bind /home/user/bin/fox /home/user/bin/fox
   --ro-bind /swcode/bin.prepend/fox /swcode/bin.prepend/fox
@@ -89,8 +144,8 @@ prefix=(
   --bind "$downloadsdironhost" "${HOME}/Downloads/"
 
   #the profiles dir and using profile-sync-daemon aka psd(puts them into /run/user/)
-  --bind /home/user/.mozilla /home/user/.mozilla
-  --bind /home/user/bin/confHOME//home/user/.mozilla/firefox/profiles.ini /home/user/bin/confHOME//home/user/.mozilla/firefox/profiles.ini
+  --bind "${HOME}/.mozilla" "${HOME}/.mozilla"
+  --bind "${HOME}/bin/confHOME/${HOME}/.mozilla/firefox/profiles.ini" "${HOME}/bin/confHOME/${HOME}/.mozilla/firefox/profiles.ini"
 
   #!bind the actual profile dirs:
 
@@ -106,6 +161,7 @@ prefix=(
   #--bind /tmp /tmp
   #--ro-bind /home/user /home/user
 
+  #TODO: replace with env.var $HOME
   #allow addons install:
   --ro-bind /home/user/SOURCE/browser.stuff/both/uBlock/uBlock/dist/build /home/user/SOURCE/browser.stuff/both/uBlock/uBlock/dist/build
   --ro-bind /home/user/SOURCE/browser.stuff/both/uMatrix/uMatrix/dist/build /home/user/SOURCE/browser.stuff/both/uMatrix/uMatrix/dist/build
@@ -117,11 +173,16 @@ prefix=(
 
   #--setenv DISPLAY "$DISPLAY" #not needed!
   #"Error: cannot open display: :0" unless I do this:
-  --ro-bind /home/user/.Xauthority /home/user/.Xauthority
+  --ro-bind "$XAUTHORITY" "$XAUTHORITY" # /home/user/.Xauthority /home/user/.Xauthority
+
+  # TODO: see if ever need this dbus thingy, maybe to start pdf viewer (if ff one is disabled)
+  # XXX: env. var. DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/dbus-qGfobek3B8,guid=cd22e3bcc15ccc7076a0d3cf65e86edf
+#  --bind /run/dbus /run/dbus
+#  #--bind /run/dbus /run/dbus
   #"(firefox:2): dbind-WARNING **: 05:22:03.720: Couldn't connect to accessibility bus: Failed to connect to socket /tmp/dbus-m4GrDaGXQR: No such file or directory" unless I do this:
   #--bind /tmp/dbus-* /tmp/dbus-* #should expand to only 1 file! FIXME: is this in ~/.cache/ ? which symlinks to /tmp for me now btw. Well it seems to be /run/user/1000/at-spi/bus_0 as per ps axuw|grep dbus
   #--bind /tmp/session-bus/* /tmp/session-bus/* #apparently this is dbus file in gentoo now? 25may2022   this is dbus related but i dno if I need this? TODO it does refer to /tmp/dbus-* file but that file isn't created yet or ever? instead this one is /run/user/1000/at-spi/bus_0
-  --ro-bind "/run/user/$(id -u)/at-spi" "/run/user/$(id -u)/at-spi" #so this is dbus now on Gentoo 25may2022 ie. /run/user/1000/at-spi/bus_0 (should be just this file)  FIXME: this shouldn't be ro ?
+  --ro-bind "/run/user/${UID}/at-spi" "/run/user/${UID}/at-spi" #so this is dbus now on Gentoo 25may2022 ie. /run/user/1000/at-spi/bus_0 (should be just this file)  FIXME: this shouldn't be ro ?
   )
 
   bname="$(basename "$0")"
@@ -180,6 +241,7 @@ stdbuf -o0 -- cat  #works the same as just 'cat' here, ie. buffered by line, tha
 sudo --remove-timestamp
 set -x
 export RUST_BACKTRACE=1
+#pushd /tmp && "${prefix[@]}" /bin/bash
 pushd /tmp && "${prefix[@]}" /usr/bin/firefox "${extra[@]}" 2>&1 | "${filterout[@]}" |sed --unbuffered -re "s/(FATAL|ERROR|WARN|!! |\\[end of stack trace\\]|^#|Extension error:|JavaScript error:|Exception stack|^Current stack)(.*$)/$(tput setab 1)\\1\\2$(tput sgr0)/g" | sed --unbuffered -re "s/^(! )([^ ]*.*$)/$(tput setab 4)\\1\\2$(tput sgr0)/g"
 popd
 
