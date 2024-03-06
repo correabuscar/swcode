@@ -98,8 +98,6 @@ prefix=(
   #$(cat /home/user/.mozilla/firefox/profiles.ini | grep '^Path' | cut -f2 -d'=' | xargs -P1 -I{} -- echo "--bind /run/user/$(id -u)/user-firefox-{} /run/user/$(id -u)/user-firefox-{}") #should get: --bind /run/user/1000/user-firefox-dqoq5his.x /run/user/1000/user-firefox-dqoq5his.x  AND (next line): --bind /run/user/1000/user-firefox-t1j6ysv1.dd /run/user/1000/user-firefox-t1j6ysv1.dd  (assuming two profiles were found!)
   #FIXME: unsure which 'user' (text) is the username , possibly only the one in 'user-firefox-profilenamehere', but NOT also the one in "/run/user/`id -u`/"
 
-  #this is for when using openrc on Gentoo:
-  $(cat /home/user/.mozilla/firefox/profiles.ini | grep '^Path' | cut -f2 -d'=' | xargs -P1 -I{} -- echo "--bind /home/user/.mozilla/firefox/{} /home/user/.mozilla/firefox/{}")
 
   #!done binding actual profile dirs
 
@@ -124,7 +122,32 @@ prefix=(
   #--bind /tmp/dbus-* /tmp/dbus-* #should expand to only 1 file! FIXME: is this in ~/.cache/ ? which symlinks to /tmp for me now btw. Well it seems to be /run/user/1000/at-spi/bus_0 as per ps axuw|grep dbus
   #--bind /tmp/session-bus/* /tmp/session-bus/* #apparently this is dbus file in gentoo now? 25may2022   this is dbus related but i dno if I need this? TODO it does refer to /tmp/dbus-* file but that file isn't created yet or ever? instead this one is /run/user/1000/at-spi/bus_0
   --ro-bind "/run/user/$(id -u)/at-spi" "/run/user/$(id -u)/at-spi" #so this is dbus now on Gentoo 25may2022 ie. /run/user/1000/at-spi/bus_0 (should be just this file)  FIXME: this shouldn't be ro ?
-  --
+  )
+
+  bname="$(basename "$0")"
+  ffprofiles=(
+    #this is for when using openrc on Gentoo (auto adds all profiles):
+    $(cat /home/user/.mozilla/firefox/profiles.ini | grep '^Path' | cut -f2 -d'=' | xargs -P1 -I{} -- echo "--bind /home/user/.mozilla/firefox/{} /home/user/.mozilla/firefox/{}")
+  )
+  if test "$bname" == "foxelem"; then
+    #done: find an automatic way to do this:
+    #FIXME: there can't be spaces in the profile name or paths!
+    #XXX: must replace only the first occurence! the second one must be same dir, because it replaces the profile dir only, it doesn't rename the profile (can't get a new profile name manually for some reason - besides this is safer too)
+    ffprofiles=(
+      $(echo "${ffprofiles[@]}" | sed -e 's/\.default-release /.default-release.forElementManuallyHandledbyfoxscript /')
+    )
+    #should get something like this:
+    #  --bind /home/user/.mozilla/firefox/tw26lehq.default /home/user/.mozilla/firefox/tw26lehq.default
+    #  --bind /home/user/.mozilla/firefox/zo5gqb5l.default-release.forElementManuallyHandledbyfoxscript/ /home/user/.mozilla/firefox/zo5gqb5l.default-release
+  elif test "$bname" != "fox"; then
+    echo "basename must be one of two values(fox, foxeleme), else it might use default profile without you realizing it" >&2 
+    exit 2
+  fi
+
+  #no more args added after this!
+  prefix+=(
+    ${ffprofiles[@]}
+    --
   )
 
 #XXX --no-remote  means always start new instance! eg. if firefox is already running, a new one will be started!
