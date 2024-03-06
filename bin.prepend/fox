@@ -105,6 +105,9 @@ prefix=(
   #GTK_OVERLAY_SCROLLING=0
   #GTK_THEME=Breeze:Dark
   --setenv "DISPLAY" "${DISPLAY:=":0"}"
+  #console.warn: services.settings: Ignoring preference override of remote settings server. Will use NOT use the provided aka lazy.gServerURL:' https://services.settings.server.firefox_blocked_domain.tld/firefox.settings.services.mozilla.com/v1 ', which is set in the about:config in 'services.settings.server' but rather the hardcoded aka AppConstants.REMOTE_SETTINGS_SERVER_URL:' https://firefox.settings.services.mozilla.com/v1 '
+  #console.warn: services.settings: Allow by setting MOZ_REMOTE_SETTINGS_DEVTOOLS=1 in the environment
+  --setenv "MOZ_REMOTE_SETTINGS_DEVTOOLS" "${MOZ_REMOTE_SETTINGS_DEVTOOLS:=1}"
 
 
 
