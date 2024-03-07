@@ -23,6 +23,15 @@ export JSGC_DISABLE_POISONING=1
 #so this must be inexistent path
 export MOZ_PLUGIN_PATH="/cS77ELTjgJWYoI0RzSKq${RANDOM}${SRANDOM}" #tried: /
 #^ but this is the default:export MOZ_PLUGIN_PATH="/usr/lib/mozilla/plugins", supposedly, when mozilla-common package is installed!
+#XXX: to that path firefox adds(internally): ":/usr/lib64/mozilla/plugins" which on Gentoo atm doesn't exist but still, defeats the purpose of what I wanted to do here!
+if test -d "/usr/lib64/mozilla/plugins"; then
+  echo "!! there's a plugins dir /usr/lib64/mozilla/plugins which will be used by firefox (unless bwrap-ed)" >&2
+  exit 1
+fi
+if test -d "/usr/lib{,64}/mozilla"; then
+  echo "!! there's a mozilla dir in one of /usr/lib{,64}/mozilla which will be used by firefox (unless bwrap-ed)" >&2
+  exit 1
+fi
 
 #fflogfile="/tmp/ff.out.log"
 #exec > "$fflogfile" 2>&1
@@ -94,7 +103,7 @@ prefix=(
   --setenv "MOZ_PLUGIN_PATH" "${MOZ_PLUGIN_PATH:="/cS77ELTjgJWYoI0RzSKq${RANDOM}${SRANDOM}"}"
   --setenv "JSGC_DISABLE_POISONING" "${JSGC_DISABLE_POISONING:=1}"
   --setenv "MOZ_ENABLE_WAYLAND" "${MOZ_ENABLE_WAYLAND:=1}"
-  --setenv "LADSPA_PATH" "${LADSPA_PATH:=/usr/lib64/ladspa}" #used by ffmpeg(and sox) at least which is used by firefox
+  #--setenv "LADSPA_PATH" "${LADSPA_PATH:=/usr/lib64/ladspa}" #used by ffmpeg(and sox) at least which is used by firefox FIXME: however I'm not sharing this via --bind !
   #QT_PLATFORM_PLUGIN=lxqt
   #QT_QPA_PLATFORMTHEME=lxqt
   #GSETTINGS_BACKEND=dconf
