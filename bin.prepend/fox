@@ -21,7 +21,7 @@ export JSGC_DISABLE_POISONING=1
 
 #attempt:don't autoload some system packages placed plugins! - this doesn't work
 #so this must be inexistent path
-export MOZ_PLUGIN_PATH="/cS77ELTjgJWYoI0RzSKq{$RANDOM}${SRANDOM}" #tried: /
+export MOZ_PLUGIN_PATH="/cS77ELTjgJWYoI0RzSKq${RANDOM}${SRANDOM}" #tried: /
 #^ but this is the default:export MOZ_PLUGIN_PATH="/usr/lib/mozilla/plugins", supposedly, when mozilla-common package is installed!
 
 #fflogfile="/tmp/ff.out.log"
