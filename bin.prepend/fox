@@ -29,7 +29,6 @@ export MOZ_PLUGIN_PATH="/cS77ELTjgJWYoI0RzSKq{$RANDOM}${SRANDOM}" #tried: /
 downloadsdironhost="${HOME}/Downloads.bwrapped"
 mkdir -p -- "${downloadsdironhost}"
 
-#TODO: do I need this dir?  Error: Could not get children of file(/home/user/.cache/mozilla/firefox/zo5gqb5l.default-release/thumbnails) because it does not exist! err is from leaving ctrl+shift+J open and firefox is restarted.
 
 if test -n "$UID" -a "$UID" != "1000" -o "$UID" != "$(id -u || /usr/bin/id -u)"; then
   echo "UID aka user id isn't 1000 or isn't same as 'id -u', this is unexpected but should still work! UID=$UID, id -u is $(id -u || /usr/bin/id -u)" >&2
@@ -191,31 +190,160 @@ prefix=(
 
   )
 
-  bname="$(basename "$0")"
-  ffprofiles=(
-    #this is for when using openrc on Gentoo (auto adds all profiles):
-    $(cat "${HOME}/.mozilla/firefox/profiles.ini" | grep '^Path' | cut -f2 -d'=' | xargs -P1 -I{} -- echo "--bind ${HOME}/.mozilla/firefox/{} ${HOME}/.mozilla/firefox/{}")
+  ffprofilesdirsbasenames=(
+    #ie. tw26lehq.default zo5gqb5l.default-release
+    $(cat "${HOME}/.mozilla/firefox/profiles.ini" | grep '^Path' | cut -f2 -d'=' | xargs -P1 -I{} -- echo "{}")
   )
+
+escape_for_sed() {
+  local arg="$1"
+  if test -z "$1"; then
+    echo "empty arg passed to escape_for_sed()" >&2
+    exit 3
+  fi
+  sed 's/[][\/$*.^|()]/\\&/g' <<< "$arg"
+}
+
+getprofilesfullpathdirs_aftermanglefor_foxelem() {
+  #echo "hi" >&2
+  local bname="$1"
+  if test -z "$bname"; then
+    echo "empty first arg (bname) passed to getprofilesfullpathdirs_aftermanglefor_foxelem()" >&2
+    exit 3
+  fi
+  shift 1
+  #firstarg and secondarg here referr to: --bind $firstarg $secondarg
+  local secondarg="$1"
+  local firstarg="$secondarg"
+  if test -z "$secondarg"; then
+    echo "empty second arg (what to replace aka full profile dir name) passed to getprofilesfullpathdirs_aftermanglefor_foxelem()" >&2
+    exit 3
+  fi
+
+  local normalprofilesubstring=".default-release"
+
   if test "$bname" == "foxelem"; then
-    #done: find an automatic way to do this:
-    #FIXME: there can't be spaces in the profile name or paths!
-    #XXX: must replace only the first occurence! the second one must be same dir, because it replaces the profile dir only, it doesn't rename the profile (can't get a new profile name manually for some reason - besides this is safer too)
-    ffprofiles=(
-      $(echo "${ffprofiles[@]}" | sed -e 's/\.default-release /.default-release.forElementManuallyHandledbyfoxscript /')
-    )
-    #should get something like this:
-    #  --bind /home/user/.mozilla/firefox/tw26lehq.default /home/user/.mozilla/firefox/tw26lehq.default
-    #  --bind /home/user/.mozilla/firefox/zo5gqb5l.default-release.forElementManuallyHandledbyfoxscript/ /home/user/.mozilla/firefox/zo5gqb5l.default-release
+    #if [ "$bname" == "foxelem" ]; then
+    if [[ "$secondarg" == *"$normalprofilesubstring"* ]]; then
+      #rename main profile to different name in the first arg of --bind $1 $2
+      local normalprofilesubstring_for_sed="$(escape_for_sed "$normalprofilesubstring" )"
+      local replacementprofilesubstring_forsed="$(escape_for_sed "${normalprofilesubstring}.forElementManuallyHandledbyfoxscript")"
+      #^ ie ".default-release.forElementManuallyHandledbyfoxscript " notice the space at the end!
+      #echo "$(echo "!$normalprofilesubstring_for_sed!")" >&2
+      #echo "$(echo "!$replacementprofilesubstring_forsed!")" >&2
+      #double expansion below:
+      #set -e #we don't want this because then we don't know why it exited
+      firstarg="$(echo "$secondarg" | sed -e "s/${normalprofilesubstring_for_sed}/${replacementprofilesubstring_forsed}/" )" #replace only the first
+      #exit 1
+      #echo "!$firstarg!" >&2
+      #set +e
+      if test "$firstarg" == "$secondarg" -o -z "$(echo -n "$firstarg" | sed -e 's/^[[:space:]]*//; s/[[:space:]]*$//' )"; then #the end test checks if it is empty if trimmed leading+trailing spaces from it
+        echo "Replacement failed for first arg for --bind, initially being '$secondarg' and became '$firstarg'(not the expected one) for the '$bname' profile dir name" >&2
+        exit 2
+      fi
+    #else #it's the other profile(s) which we don't replace
+    #  firstarg="$secondarg"
+    fi
+  #elif test "$bname" == "fox"; then
+    #firstarg="$secondarg"
+    #already set!
+  #else
   elif test "$bname" != "fox"; then
-    echo "basename must be one of two values(fox, foxeleme), else it might use default profile without you realizing it" >&2 
+    echo "basename must be one of two values(fox, foxelem), else it might use default profile without you realizing it" >&2
     exit 2
   fi
+  echo "$firstarg $secondarg"
+}
+  #TODO: this is a mess :)) maybe use something else, like python? the fail checks are still needed tho!
+  set -e  #needed for the "exit 2" below inside the $() to work here in parent bash!
+  bname="$(basename "$0")"
+  ffprofilesbinds=(
+    #this is for when using openrc on Gentoo (auto adds all profiles):
+    #$(cat "${HOME}/.mozilla/firefox/profiles.ini" | grep '^Path' | cut -f2 -d'=' | xargs -P1 -I{} -- echo "--bind ${HOME}/.mozilla/firefox/{} ${HOME}/.mozilla/firefox/{}")
+    #FIXME: yes profile names(and paths here) must not contain spaces(and potentialy other stuff too) - unsure if firefox allows spaces in profile name or not tho!
+    $(for each in "${ffprofilesdirsbasenames[@]}"; do
+      fullprofiledir="${HOME}/.mozilla/firefox/${each}";
+      set -e #for exit 2 inside the $(funccallhere args) to work!
+      retoornedarray=( $(getprofilesfullpathdirs_aftermanglefor_foxelem "$bname" "$fullprofiledir") )
+      set +e
+      firstarg="${retoornedarray[0]}"
+      secondarg="${retoornedarray[1]}"
+      if test -z "$firstarg"; then
+        echo "failed, firstarg was returned empty1" >&2
+        exit 4
+      fi
+      if test -z "$secondarg"; then
+        echo "failed, secondarg was returned empty1" >&2
+        exit 4
+      fi
+      #TODO: test so the args don't have spaces and other bad stuff here
+      echo "--bind ${firstarg} ${secondarg}"; #secondarg is what's seen inside bwrap!
+      #XXX: so here we get this (for profile dir):
+      #--bind /home/user/.mozilla/firefox/zo5gqb5l.default-release/.forElementManuallyHandledbyfoxscript /home/user/.mozilla/firefox/zo5gqb5l.default-release
+      #--bind /home/user/.mozilla/firefox/tw26lehq.default /home/user/.mozilla/firefox/tw26lehq.default
+      #notice how one of the two lines has only the first arg replaced!
+    done)
+  )
+  #$HOME is set in the $prefix array if it wasn't already(which is unlikely)
+  #$HOME/.cache is symlink to /tmp thus the rest of the child dirs don't exist.
+  ffprofilescachesbinds=(
+    $(for each in "${ffprofilesdirsbasenames[@]}"; do
+      fullprofilecachedir="${HOME}/.cache/mozilla/firefox/${each}"
+      firstarg="$fullprofilecachedir"
+      #doneTODO: do I need this dir? idno but happens on each startup now(07march2024)//  Error: Could not get children of file(/home/user/.cache/mozilla/firefox/zo5gqb5l.default-release/thumbnails) because it does not exist! err is from leaving ctrl+shift+J open and firefox is restarted.
+
+      set -e #for exit 2 inside the $(funccallhere args) to work!
+      retoornedarray=( $(getprofilesfullpathdirs_aftermanglefor_foxelem "$bname" "$fullprofilecachedir") )
+      set +e
+      firstarg="${retoornedarray[0]}"
+      secondarg="${retoornedarray[1]}"
+      if test -z "$firstarg"; then
+        echo "failed, firstarg was returned empty2" >&2
+        exit 4
+      fi
+      if test -z "$secondarg"; then
+        echo "failed, secondarg was returned empty2" >&2
+        exit 4
+      fi
+      #TODO: test so the args don't have spaces and other bad stuff here
+      mkdir -p -- "${firstarg}/thumbnails"
+      echo "--bind ${firstarg} ${secondarg}"; #secondarg is what's seen inside bwrap!
+      #echo "--bind ${fullprofilecachedir} ${secondarg}";
+      #XXX: so here we get this (for .cache subdir):
+      #--bind /home/user/.cache/mozilla/firefox/zo5gqb5l.default-release/.forElementManuallyHandledbyfoxscript /home/user/.cache/mozilla/firefox/zo5gqb5l.default-release
+      #--bind /home/user/.cache/mozilla/firefox/tw26lehq.default /home/user/.cache/mozilla/firefox/tw26lehq.default
+      #notice how one of the two lines has only the first arg replaced!
+    done)
+  )
+  set +e
+#  this is obsoleted now:
+#  #this is after the caches dirs so that i can clear the cache when *.default-release.forElementManuallyHandledbyfoxscript is used since it has same name as the normal profile, can't be sharing same cache, even tho they will now share same cache dir hmm... doneFIXME: well this blows. so then I can't use .cache at all. because both fox and foxelem could be running at the same time, ... guess I've to use renamed cache dir too just like profile dir.
+#  if test "$bname" == "foxelem"; then
+#    #done: find an automatic way to do this:
+#    #FIXME: there can't be spaces in the profile name or paths!
+#    #XXX: must replace only the first occurence! the second one must be same dir, because it replaces the profile dir only, it doesn't rename the profile (can't get a new profile name manually for some reason - besides this is safer too)
+#    ffprofilesbinds=(
+#      $(echo "${ffprofilesbinds[@]}" | sed -e 's/\.default-release /.default-release.forElementManuallyHandledbyfoxscript /')
+#    )
+#    ffprofilescachesbinds=(
+#      $(echo "${ffprofilescachesbinds[@]}" | sed -e 's/\.default-release /.default-release.forElementManuallyHandledbyfoxscript /')
+#    )
+#    #should get something like this:
+#    #  --bind /home/user/.mozilla/firefox/tw26lehq.default /home/user/.mozilla/firefox/tw26lehq.default
+#    #  --bind /home/user/.mozilla/firefox/zo5gqb5l.default-release.forElementManuallyHandledbyfoxscript/ /home/user/.mozilla/firefox/zo5gqb5l.default-release
+#  elif test "$bname" != "fox"; then
+#    echo "basename must be one of two values(fox, foxelem), else it might use default profile without you realizing it" >&2 
+#    exit 2
+#  fi
+
 
   #no more args added after this!
   prefix+=(
-    ${ffprofiles[@]}
+    ${ffprofilesbinds[@]}
+    ${ffprofilescachesbinds[@]}
     --
   )
+
 
 #XXX --no-remote  means always start new instance! eg. if firefox is already running, a new one will be started!
 extra=(-P "$RANDOM" "$@")  #must be at the end, else it will take the url as an arg and think it's the profile name! or maybe -P -  works? yep, that works! ok, it doesn't work(again, oddly enough) unless I do: -P - -- fullpathtofile.xpi
