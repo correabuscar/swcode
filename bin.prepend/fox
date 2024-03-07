@@ -72,7 +72,7 @@ prefix=(
   --unshare-uts
   --unshare-cgroup
   --unshare-pid
-  --disable-userns --assert-userns-disabled
+  #--disable-userns --assert-userns-disabled #XXX: using this makes about:support show "User Namespaces" "false" under sandbox
 
   --clearenv
   --setenv "HOME" "${HOME:=/home/user}"
