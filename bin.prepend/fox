@@ -29,7 +29,7 @@ export MOZ_PLUGIN_PATH="/cS77ELTjgJWYoI0RzSKq{$RANDOM}${SRANDOM}" #tried: /
 downloadsdironhost="${HOME}/Downloads.bwrapped"
 mkdir -p -- "${downloadsdironhost}"
 
-#TODO: do I need this dir?  Error: Could not get children of file(/home/user/.cache/mozilla/firefox/zo5gqb5l.default-release/thumbnails) because it does not exist from ctrl+shift+J if left open and firefox is restarted.
+#TODO: do I need this dir?  Error: Could not get children of file(/home/user/.cache/mozilla/firefox/zo5gqb5l.default-release/thumbnails) because it does not exist! err is from leaving ctrl+shift+J open and firefox is restarted.
 
 if test -n "$UID" -a "$UID" != "1000" -o "$UID" != "$(id -u || /usr/bin/id -u)"; then
   echo "UID aka user id isn't 1000 or isn't same as 'id -u', this is unexpected but should still work! UID=$UID, id -u is $(id -u || /usr/bin/id -u)" >&2
@@ -138,7 +138,6 @@ prefix=(
   #^ because this ^ is a symlink to:
   --ro-bind "${HOME}/bin/confHOME/${HOME}/.config/mimeapps.list" "${HOME}/bin/confHOME/${HOME}/.config/mimeapps.list"
 
-  #--ro-bind /home/user/bin/fox /home/user/bin/fox
   --ro-bind /swcode/bin.prepend/fox /swcode/bin.prepend/fox
   --ro-bind /swcode /swcode
   #^ it's $0
@@ -154,7 +153,7 @@ prefix=(
 
   #This is for when using profile-sync-daemon (which requires systemd):
   #$(cat /home/user/.mozilla/firefox/profiles.ini | grep '^Path' | cut -f2 -d'=' | xargs -P1 -I{} -- echo "--bind /run/user/$(id -u)/user-firefox-{} /run/user/$(id -u)/user-firefox-{}") #should get: --bind /run/user/1000/user-firefox-dqoq5his.x /run/user/1000/user-firefox-dqoq5his.x  AND (next line): --bind /run/user/1000/user-firefox-t1j6ysv1.dd /run/user/1000/user-firefox-t1j6ysv1.dd  (assuming two profiles were found!)
-  #FIXME: unsure which 'user' (text) is the username , possibly only the one in 'user-firefox-profilenamehere', but NOT also the one in "/run/user/`id -u`/"
+  #nvmFIXME: unsure which 'user' (text) is the username , possibly only the one in 'user-firefox-profilenamehere', but NOT also the one in "/run/user/`id -u`/"
 
 
   #!done binding actual profile dirs
@@ -166,13 +165,13 @@ prefix=(
 
   #TODO: replace with env.var $HOME
   #allow addons install:
-  --ro-bind /home/user/SOURCE/browser.stuff/both/uBlock/uBlock/dist/build /home/user/SOURCE/browser.stuff/both/uBlock/uBlock/dist/build
-  --ro-bind /home/user/SOURCE/browser.stuff/both/uMatrix/uMatrix/dist/build /home/user/SOURCE/browser.stuff/both/uMatrix/uMatrix/dist/build
+  --ro-bind "${HOME}/SOURCE/browser.stuff/both/uBlock/uBlock/dist/build" "${HOME}/SOURCE/browser.stuff/both/uBlock/uBlock/dist/build"
+  --ro-bind "${HOME}/SOURCE/browser.stuff/both/uMatrix/uMatrix/dist/build" "${HOME}/SOURCE/browser.stuff/both/uMatrix/uMatrix/dist/build"
   #XXX must use same path or else ./go script from eg. /home/user/SOURCE/browser.stuff/both/uBlock/go will point to wrong path when attempting to auto-install the just compile addon!
-  --ro-bind /home/user/SOURCE/browser.stuff/both/https-everywhere/https-everywhere/pkg /home/user/SOURCE/browser.stuff/both/https-everywhere/https-everywhere/pkg
-  --ro-bind /home/user/SOURCE/browser.stuff/both/decentraleyes /home/user/SOURCE/browser.stuff/both/decentraleyes
-  --ro-bind /home/user/SOURCE/browser.stuff/firefox.stuff/darkreader /home/user/SOURCE/browser.stuff/firefox.stuff/darkreader
-  --ro-bind /home/user/SOURCE/browser.stuff/firefox.stuff/Cookie-AutoDelete.ff.xpi /home/user/SOURCE/browser.stuff/firefox.stuff/Cookie-AutoDelete.ff.xpi
+  --ro-bind "${HOME}/SOURCE/browser.stuff/both/https-everywhere/https-everywhere/pkg" "${HOME}/SOURCE/browser.stuff/both/https-everywhere/https-everywhere/pkg"
+  --ro-bind "${HOME}/SOURCE/browser.stuff/both/decentraleyes" "${HOME}/SOURCE/browser.stuff/both/decentraleyes"
+  --ro-bind "${HOME}/SOURCE/browser.stuff/firefox.stuff/darkreader" "${HOME}/SOURCE/browser.stuff/firefox.stuff/darkreader"
+  --ro-bind "${HOME}/SOURCE/browser.stuff/firefox.stuff/Cookie-AutoDelete.ff.xpi" "${HOME}/SOURCE/browser.stuff/firefox.stuff/Cookie-AutoDelete.ff.xpi"
 
   #--setenv DISPLAY "$DISPLAY" #not needed!
   #"Error: cannot open display: :0" unless I do this:
@@ -185,13 +184,17 @@ prefix=(
   #"(firefox:2): dbind-WARNING **: 05:22:03.720: Couldn't connect to accessibility bus: Failed to connect to socket /tmp/dbus-m4GrDaGXQR: No such file or directory" unless I do this:
   #--bind /tmp/dbus-* /tmp/dbus-* #should expand to only 1 file! FIXME: is this in ~/.cache/ ? which symlinks to /tmp for me now btw. Well it seems to be /run/user/1000/at-spi/bus_0 as per ps axuw|grep dbus
   #--bind /tmp/session-bus/* /tmp/session-bus/* #apparently this is dbus file in gentoo now? 25may2022   this is dbus related but i dno if I need this? TODO it does refer to /tmp/dbus-* file but that file isn't created yet or ever? instead this one is /run/user/1000/at-spi/bus_0
-  --ro-bind "/run/user/${UID}/at-spi" "/run/user/${UID}/at-spi" #so this is dbus now on Gentoo 25may2022 ie. /run/user/1000/at-spi/bus_0 (should be just this file)  FIXME: this shouldn't be ro ?
+  #--ro-bind "${XDG_RUNTIME_DIR}/at-spi" "${XDG_RUNTIME_DIR}/at-spi" #so this is dbus now on Gentoo 25may2022 ie. /run/user/1000/at-spi/bus_0 (should be just this file) well it's accessibility bus so not dbus!  FIXME: this shouldn't be ro ?
+  #XXX: so this ^ is: [2, Main Thread] WARNING: Couldn't connect to accessibility bus: Failed to connect to socket /run/user/1000/at-spi/bus_0: No such file or directory: 'glib warning', file /var/tmp/portage/www-client/firefox-123.0/work/firefox-123.0/toolkit/xre/nsSigHandlers.cpp:187
+  #(firefox-default:2): dbind-WARNING **: 11:23:02.649: Couldn't connect to accessibility bus: Failed to connect to socket /run/user/1000/at-spi/bus_0: No such file or directory
+
+
   )
 
   bname="$(basename "$0")"
   ffprofiles=(
     #this is for when using openrc on Gentoo (auto adds all profiles):
-    $(cat /home/user/.mozilla/firefox/profiles.ini | grep '^Path' | cut -f2 -d'=' | xargs -P1 -I{} -- echo "--bind /home/user/.mozilla/firefox/{} /home/user/.mozilla/firefox/{}")
+    $(cat "${HOME}/.mozilla/firefox/profiles.ini" | grep '^Path' | cut -f2 -d'=' | xargs -P1 -I{} -- echo "--bind ${HOME}/.mozilla/firefox/{} ${HOME}/.mozilla/firefox/{}")
   )
   if test "$bname" == "foxelem"; then
     #done: find an automatic way to do this:
