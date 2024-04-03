@@ -1,0 +1,9 @@
+#!/bin/bash
+
+echo "shows current folder's each dir's size (except the .. one, but including . which means total)"
+( for i in * .*; do 
+  if test -d "$i" -a "$i" != ".."; then
+    du -P -s --apparent-size -- "$i" 2>/dev/null
+    #need --apparent-size! //nvmXXX ok don't use --apparent-size or --bytes or --block-size=1 because no need! Thanks to kurahaupo on #linux freenode for telling me that 'du' doesn't count links more than once (eg. due to btrfs COW)
+  fi
+done ) | sort -n -k 1
