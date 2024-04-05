@@ -183,7 +183,7 @@ export CCACHE_DIR_FOR_GENKERNEL_UTILS="${homedir_of_buildasuser}/.ccache.for_gen
 
 if ! grep -- "^SANDBOX_WRITE=\"$CCACHE_DIR_FOR_GENKERNEL_UTILS\"" "$sandbox_conf_file"; then
   cat >>"$sandbox_conf_file" <<EOF
-#autoadded by '$0' for /home/user/bin/regenkernel  (writes to the following dir(and its subdirs/files) is allowed, so that genkernel can use ccache when building utils like busybox and using args --sandbox and --utils-cc="/usr/bin/ccache gcc")
+#autoadded by '$0' for /swcode/regenkernel  (writes to the following dir(and its subdirs/files) is allowed, so that genkernel can use ccache when building utils like busybox and using args --sandbox and --utils-cc="/usr/bin/ccache gcc")
 SANDBOX_WRITE="$CCACHE_DIR_FOR_GENKERNEL_UTILS"
 EOF
 fi
@@ -223,6 +223,7 @@ else
   echo "!! Using '$shouldclean' arg to genkernel because this is first time(no built kernel exists) thus it doesn't matter."
 fi
 #--disklabel got removed.
+##FIXME: see why CCACHE isn't used, maybe CCACHE_BASEDIR needs to be set to something?
 set -vx
 time sudo "--preserve-env=CCACHE_DEBUG,CCACHE_LOGFILE,LANG,CCACHE_NOCOMPRESS,CCACHE_COMPRESSLEVEL,CCACHE_DIR,CCACHE_NOREADONLY,CCACHE_TEMPDIR,CCACHE_NOHARDLINK,CCACHE_NOHASHDIR,CCACHE_SLOPPINESS,CCACHE_NODEBUG,CCACHE_DIR_FOR_GENKERNEL_UTILS" -u "$buildasuser" -g "$buildasuser" -- genkernel all --kernel-outputdir="$kerneloutdir" --bootdir="$tmpoutbootdir" --install --symlink --no-splash --no-mountboot --no-keymap --no-lvm  --no-mdadm --no-dmraid --no-zfs --no-multipath --no-iscsi --no-luks --no-gpg --no-netboot --no-unionfs  --no-firmware --no-integrated-initramfs --compress-initramfs --compress-initramfs-type=xz --loglevel=5 --color --no-mrproper --no-postclear --oldconfig "$shouldclean" --no-save-config --no-module-rebuild --strip=none --kernel-modules-prefix="$moduleprefixdir" --sandbox --logfile="$logfile" --kernel-make="make" --kernel-cc='/usr/bin/ccache gcc' --utils-cc="/usr/bin/ccache gcc" --utils-cxx="/usr/bin/ccache g++" --tmpdir="$genkerneltmpdir" --cachedir="$genkernelcachedir" "${SAFETYARGS[@]}" "${DEBUGARGS[@]}" "$@" ; ec="$?"
 #note: --compress-initramfs-type=best is =xz and =zstd is way larger(about 1meg, from 3.9M(xz) to 4.9M(zstd))!
