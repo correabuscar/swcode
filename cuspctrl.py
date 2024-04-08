@@ -14,7 +14,7 @@
 
 #learning python... started with https://wiki.python.org/moin/SimplePrograms
 
-#interesting, about two weeks later(after making that keeping proc files open and seek/read when needed here), I see this: https://www.phoronix.com/scan.php?page=news_item&px=Linux-READFILE-System-Call
+#interesting, about two weeks later(after making that keeping proc files open and seek/read when needed here), I see this: https://www.phoronix.com/scan.php?page=news_item&px=Linux-READFILE-System-Call  eh that's 403 now, link is now this: https://www.phoronix.com/news/Linux-READFILE-System-Call and an update is here: https://www.phoronix.com/news/Linux-Readfile-Syscall-2022
 
 from __future__ import print_function
 import os,sys
