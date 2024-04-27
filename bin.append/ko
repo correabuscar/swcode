@@ -24,7 +24,7 @@ bus=$(lsusb -d "$keyvendorproduct" |cut -f2 -d' ')
 dev=$(lsusb -d "$keyvendorproduct" |cut -f4 -d' '|cut -f1 -d:)
 
 #sudo -v
-echo "Don't press anything for 1 second..."
+echo "Don't press anything for 1 second... (otherwise it will get stuck/seen_as pressed)"
 sleep 1 #so that you get the chance to release Enter key, else it will keep seeing it pressed when this script is done. (20Sept2022)
 clrbuf #so it doesn't repeat the Enter key(press)
 #TODO: ideally here, unstuck any keys, ie. keyup all keys? or somehow clear their pressed state, even if held down... hmm..
