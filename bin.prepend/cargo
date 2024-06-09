@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+if test "$(id -n -u)" == "user"; then
+  /home/user/.cargo/bin/cargo "$@"
+else
+  /usr/bin/cargo "$@"
+fi
+

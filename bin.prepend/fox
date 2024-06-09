@@ -183,6 +183,7 @@ prefix=(
   #^ that's a dir not a file; contains an .xpi file tho.
   --ro-bind "${HOME}/SOURCE/browser.stuff/firefox.stuff/tst/treestyletab/webextensions" "${HOME}/SOURCE/browser.stuff/firefox.stuff/tst/treestyletab/webextensions"
   #treestyletab-we.xpi"
+  --ro-bind "${HOME}/SOURCE/browser.stuff/both/rust-search-extension/rustsearchextension.xpi" "${HOME}/SOURCE/browser.stuff/both/rust-search-extension/rustsearchextension.xpi"
 
   #--setenv DISPLAY "$DISPLAY" #not needed!
   #"Error: cannot open display: :0" unless I do this:
