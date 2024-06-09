@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 
-if test "$(id -n -u)" == "user"; then
-  /home/user/.cargo/bin/rustc "$@"
-else
-  /usr/bin/rustc "$@"
-fi
+function foo() {
+  local base="$(basename "$0")"
+  if test "$(id -n -u)" == "user"; then
+    "/home/user/.cargo/bin/$base" "$@"
+  else
+    "/usr/bin/$base" "$@"
+  fi
+}
 
+foo "$@"
