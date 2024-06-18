@@ -37,6 +37,8 @@ fi
 #exec > "$fflogfile" 2>&1
 downloadsdironhost="${HOME}/Downloads.bwrapped"
 mkdir -p -- "${downloadsdironhost}"
+logsdir="/tmp/firefox.logs"
+mkdir -- "$logsdir"
 
 
 if test -n "$UID" -a "$UID" != "1000" -o "$UID" != "$(id -u || /usr/bin/id -u)"; then
@@ -116,6 +118,16 @@ prefix=(
   #console.warn: services.settings: Ignoring preference override of remote settings server. Will use NOT use the provided aka lazy.gServerURL:' https://services.settings.server.firefox_blocked_domain.tld/firefox.settings.services.mozilla.com/v1 ', which is set in the about:config in 'services.settings.server' but rather the hardcoded aka AppConstants.REMOTE_SETTINGS_SERVER_URL:' https://firefox.settings.services.mozilla.com/v1 '
   #console.warn: services.settings: Allow by setting MOZ_REMOTE_SETTINGS_DEVTOOLS=1 in the environment
   --setenv "MOZ_REMOTE_SETTINGS_DEVTOOLS" "${MOZ_REMOTE_SETTINGS_DEVTOOLS:=1}"
+  #Mozilla's logging system uses numeric levels for logging:
+#    0: Fatal
+#    1: Error
+#    2: Warning
+#    3: Info
+#    4: Debug
+#    5: Verbose
+#  --setenv "MOZ_LOG" "pipnss:5,nsSecureBrowserUI:5,*:5"
+#  --setenv "MOZ_LOG_FILE" "${logsdir}/firefox.log"
+#  XXX: commented out, as it's for only when needed
 
 
 
@@ -151,6 +163,7 @@ prefix=(
   #^ it's $0
   --tmpfs /tmp
   --tmpfs /var/tmp
+  --bind "$logsdir" "$logsdir"
   --bind "$downloadsdironhost" "${HOME}/Downloads/"
 
   #the profiles dir and using profile-sync-daemon aka psd(puts them into /run/user/)
@@ -289,6 +302,13 @@ getprofilesfullpathdirs_aftermanglefor_foxelem() {
         echo "failed, secondarg was returned empty1" >&2
         exit 4
       fi
+
+      #XXX: we wanna avoid any stdout output, but stderr should be ok(not double checked)
+      if ! diff -qup "/swcode/data/user.js" "${firstarg}/user.js">/dev/null; then
+        #if here, they're different
+        cp -a -v -f -T -- "/swcode/data/user.js" "${firstarg}/user.js" >/dev/null || exit 88
+      fi
+
       #TODO: test so the args don't have spaces and other bad stuff here
       echo "--bind ${firstarg} ${secondarg}"; #secondarg is what's seen inside bwrap!
       #XXX: so here we get this (for profile dir):
@@ -319,7 +339,7 @@ getprofilesfullpathdirs_aftermanglefor_foxelem() {
         exit 4
       fi
       #TODO: test so the args don't have spaces and other bad stuff here
-      mkdir -p -- "${firstarg}/thumbnails"
+      mkdir -p -- "${firstarg}/thumbnails" >/dev/null
       echo "--bind ${firstarg} ${secondarg}"; #secondarg is what's seen inside bwrap!
       #echo "--bind ${fullprofilecachedir} ${secondarg}";
       #XXX: so here we get this (for .cache subdir):
