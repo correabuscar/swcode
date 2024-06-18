@@ -133,6 +133,11 @@ prefix=(
 
   --setenv "LANG" "${LANG:=en_US.utf8}" #the := also sets LANG if it's unset or null, as opposed to :- which doesn't.
 
+  #--setenv "NSS_DEFAULT_DB_TYPE" "sql:/etc/pki/nssdb" #no effect:tell firefox to use the global cert database instead of a local one that it re-makes if doesn't exist, in each ff profile dir. that /etc/pki/nssdb/ dir gets regenerated after each emerge of dev-libs/nss via /etc/portage/env/dev-libs/nss
+  #--setenv "NSS_DEFAULT_DB_TYPE" "sql"
+  #in about:config the security.enterprise_roots.enabled preference to set its value to true. This enables Firefox to use the global NSS database (nssdb) specified by the environment variable MOZ_NSS_DIR or by default paths recognized by Firefox.
+  #--setenv "MOZ_NSS_DIR" "/etc/pki/nssdb" #no effect!
+
   --ro-bind /etc /etc
 
   #--ro-bind /run /run  #this makes the other below /run/user/1000/ readonly too!
