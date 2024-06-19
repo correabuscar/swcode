@@ -24,6 +24,39 @@ else
 fi
 
 echo "Found ${#DNS_SERVERS[@]} DNS servers in file '${DNS_SERVERS_DNSMASQ_FILE}': '${DNS_SERVERS[*]}'" >&2
+collected_inlist_lines=()
+
+function is_it_in_array() {
+  local search_element="$1"
+  if test -z "$search_element"; then
+    echo "Empty arg supplied to function '${FUNCNAME[0]}'" >&2
+    exit 5
+  fi
+  # Initialize a flag to indicate if the element is found
+  #local element_found=0
+
+  # Iterate through the array to check if the element exists
+  for element in "${collected_inlist_lines[@]}"; do
+    if [[ "$element" == "$search_element" ]]; then
+      #element_found=1
+      return 0
+      #break
+    fi
+  done
+  return 1
+}
+function already_exists() {
+  local expected="$1"
+  if test -z "$expected"; then
+    echo "Empty arg supplied to function '${FUNCNAME[0]}'" >&2
+    exit 6
+  fi
+  if ! grep -qF "$expected" -- "${APPEND_TO_FILE}" >/dev/null; then
+    #aka non-zero exit code ie. not found
+    return 1
+  fi
+  return 0
+}
 
 function add_to_dnsmasq_allow_list() {
   local host="$1"
@@ -32,7 +65,6 @@ function add_to_dnsmasq_allow_list() {
     exit 2
   fi
 
-  echo "Host: '$host'" >&2
   for each_DNS_server in "${DNS_SERVERS[@]}"; do
     local expected
     if test "$what" == "allow"; then
@@ -45,9 +77,28 @@ function add_to_dnsmasq_allow_list() {
     else
       echo "Unhandled type '$what', aborting." >&2
     fi
-    if ! grep -qF "$expected" -- "${APPEND_TO_FILE}" >/dev/null; then
-      #it's not already allowed/denied, so add it!
-      echo "$expected"
+    #if ! grep -qF "$expected" -- "${APPEND_TO_FILE}" >/dev/null; then
+    if ! already_exists "$expected" >/dev/null; then
+#      #aka non-zero exit code ie. does not exist
+#      #so it's not already allowed/denied, so add it by showing it to stdout!
+#      echo "$expected"
+
+      # just in case it's passed more than once as arg, since we didn't add any to the file yet!
+      if ! is_it_in_array "$expected"; then
+        #aka non-zero exit code ie. not found
+        #add it and return
+        echo "adding host: '$host'" >&2
+        collected_inlist_lines+=( "$expected" )
+      else
+        echo "duplicate host arg: '$host'" >&2
+      fi
+    else
+      echo "host already in file: '$host'" >&2
+    fi
+    if test "$what" == "deny"; then
+      #no need to do it for each DNS server, because for 'deny' it doesn't depend on them!
+      #echo "foo" >&2
+      break
     fi
   done
 }
@@ -68,16 +119,14 @@ fi
 
 #for tests:
 #add_to_dnsmasq_allow_list blah "bla bla"
-collected_whitelist_lines=(
-$(for each in "$@"; do
+for each in "$@"; do
   add_to_dnsmasq_allow_list "$each"
 done
-)
-)
-if test "${#collected_whitelist_lines[@]}" -gt 0; then
+
+if test "${#collected_inlist_lines[@]}" -gt 0; then
   #add all changes at once!
   #TODO: ensure it's locked so no two $0 can concurrently append here and make a racy mess!
-  echo "${collected_whitelist_lines[@]}" | tr ' ' '\n' | tee -a "$APPEND_TO_FILE"
+  echo "${collected_inlist_lines[@]}" | tr ' ' '\n' | tee -a "$APPEND_TO_FILE"
 fi
 
 echo "Done, file '$APPEND_TO_FILE' was updated! Now restarting dnsmasq to effectivate changes:"
