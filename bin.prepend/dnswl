@@ -58,7 +58,7 @@ function already_exists() {
   return 0
 }
 
-function add_to_dnsmasq_allow_list() {
+function add_to_dnsmasq_list() {
   local host="$1"
   if test "$#" != "1"; then
     echo "!! You should pass only 1 arg to func '${FUNCNAME[0]}()', you passed $# args as '$*'" >&2
@@ -77,13 +77,12 @@ function add_to_dnsmasq_allow_list() {
     else
       echo "Unhandled type '$what', aborting." >&2
     fi
-    #if ! grep -qF "$expected" -- "${APPEND_TO_FILE}" >/dev/null; then
     if ! already_exists "$expected" >/dev/null; then
 #      #aka non-zero exit code ie. does not exist
 #      #so it's not already allowed/denied, so add it by showing it to stdout!
 #      echo "$expected"
 
-      # just in case it's passed more than once as arg, since we didn't add any to the file yet!
+      # just in case the hostname is passed more than once as arg to this script, since we didn't add any to the file yet!
       if ! is_it_in_array "$expected"; then
         #aka non-zero exit code ie. not found
         #add it and return
@@ -120,7 +119,7 @@ fi
 #for tests:
 #add_to_dnsmasq_allow_list blah "bla bla"
 for each in "$@"; do
-  add_to_dnsmasq_allow_list "$each"
+  add_to_dnsmasq_list "$each"
 done
 
 if test "${#collected_inlist_lines[@]}" -gt 0; then
