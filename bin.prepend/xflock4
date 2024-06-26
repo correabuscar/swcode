@@ -1,0 +1,26 @@
+#!/bin/bash
+
+#xflock4 exists only on ArchLinux
+#this is workaround on Gentoo with alock-9999 from some overlay, as it doesn't exist on ::gentoo only v1 which is crap!
+alock -bg blank -cursor blank -input frame -auth pam &
+#^ & so it's non-blocking just like xflock4
+#switched from -input none to -input frame because sometimes it shows still blank even tho it's unlocked, so im typing pwd in the terminal! 09april2024
+
+roon() {
+  local ec
+  logger "'$0'(on $(tty)) is executing: '$*'"
+  "$@" ; ec="$?"
+  if test "$ec" != "0"; then
+    logger "'$0'(on $(tty)) failed(ec='$ec') executing: '$*'"
+  fi
+  return "$ec"
+}
+
+roon sleep 1
+roon xset dpms force suspend
+roon sleep 1
+roon xset dpms force off
+roon sleep 1
+roon xset dpms force standby
+roon setterm --blank force
+

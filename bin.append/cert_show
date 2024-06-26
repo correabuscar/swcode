@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+#from: https://wiki.gentoo.org/wiki/Certificates#Debugging_certificate_issues
+
+if test "$#" -lt "1"; then
+  echo "pass hostname(s) as arg"
+  exit 1
+fi
+set -e
+for each in "$@"; do
+  openssl s_client -showcerts -port 443 -CApath /etc/ssl/certs -host "$each" </dev/null | grep --color=always -E -- "(OU|CN)="
+done
