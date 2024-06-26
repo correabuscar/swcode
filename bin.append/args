@@ -1,4 +1,14 @@
+#!/usr/bin/env -S PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin:${PATH}" bash
+#^ the above was taken from /etc/profile.env where's seen as as $ROOTPATH
+
+#this is insecure:
 #!/usr/bin/env bash
 
+
+#first attempt was:
+#!/usr/bin/env -vS PATH="/sbin:/usr/sbin:/usr/bin:/bin:/usr/local/sbin:/usr/local/bin:${PATH}" which -a bash
+
+#which -a bash
+#echo "PATH=$PATH"
 echo "$# args"
 echo "$@"
