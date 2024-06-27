@@ -1,0 +1,13 @@
+#!/usr/bin/env -S PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin:${PATH}" bash
+
+roon() {
+  local ec
+  logger "'$0'(on $(tty)) is executing: '$*'"
+  "$@" ; ec="$?"
+  if test "$ec" != "0"; then
+    logger "'$0'(on $(tty)) failed(ec='$ec') executing: '$*'"
+  fi
+  return "$ec"
+}
+
+roon xset dpms force suspend
