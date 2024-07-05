@@ -36,7 +36,7 @@ function main() {
     # Check if 'errexit' (set -e) is in the list of enabled options
     if [[ $- == *e* ]]; then
       #so only take this path if 'set -e' was set/used, but not if 'set +e' is on
-      perr "Error (exit code '$ec') occurred in diff wrapper script '$0' at line: '$1'"
+      echo "Error (exit code '$ec') occurred in diff wrapper script '$0' at line: '$1'" >&2
       exit 2 #aka trouble
     fi
   }
@@ -116,7 +116,16 @@ function main() {
     esac
   done
 
-  perr "'$0' wrapper script called with '${#at_saved[@]}' args: '${at_saved[*]}'"
+  perr "'$0' wrapper script called with '${#at_saved[@]}' args: '${at_saved[*]}'\nand with env.vars. GIT_DIFF_OPTS='$GIT_DIFF_OPTS', GIT_DIFF_PATH_COUNTER='$GIT_DIFF_PATH_COUNTER', GIT_DIFF_PATH_TOTAL='$GIT_DIFF_PATH_TOTAL'"
+  perr "$(id)" #even if 'git' was started as suid root, this external diff cmd won't run as root, but as the normal user that started 'git'
+  #GIT_DIFF_PATH_TOTAL is the number of how many diff-ed files will be!
+  #GIT_DIFF_PATH_COUNTER is the 1-based counter that's incremented by 1 for each of those diff-ed files! eg. 1 for first and same value as $GIT_DIFF_PATH_TOTAL for last diff-ed file.
+  #GIT_DIFF_OPTS
+  # Only valid setting is "--unified=??" or "-u??" to set the number of context lines shown when a unified diff
+  #  is created. This takes precedence over any "-U" or "--unified" option value passed on the Git diff command
+  #  line.
+  #XXX: if calling `git diff --unified=10` that arg isn't seen or passed to external diff!(git version 2.45.2), so you need to set it via GIT_DIFF_OPTS! which if set, it overrides the arg!
+  #TODO: test for this, find out how: "For a path that is unmerged, GIT_EXTERNAL_DIFF is called with 1 parameter, <path>."
   local ec
   #eg. $ GIT_EXTERNAL_DIFF="diff --git-diff" GIT_PAGER= git diff
   if test "$git_diff_wanted" == "1"; then
@@ -152,6 +161,7 @@ function main() {
       old_file_path="$old_file"
       old_file_hash="0000000000000000000000000000000000000000"
     else
+      #FIXME: this will fail to read the file if 'git' was suid root, because this diff wrapper ends up running as the user that started 'git', not as suid root (possibly a feature of running child processes by the OS, or 'git' drops privs for executed child processes?)
       set -e
       old_file_hash="$(git hash-object -t blob -- "$old_file")"
       set +e
@@ -219,7 +229,8 @@ function main() {
 
     #cp -- "$old_file" /tmp/foo.rs
     #command_array=("$diff" "--color=$color" -up --label "a/$old_file_path $FORMATTED_TIMESTAMP (actually time of the diff)" --label "b/$new_file_path " -- "$old_file" "$new_file")
-    local command_array=("$diff" "--color=$color" -up --label "$old_file_shown" --label "$new_file_shown" -- "$old_file" "$new_file")
+    #XXX: can't quote $GIT_DIFF_OPTS with double quotes else it can be an empty arg! NOTE: for this to properly work, it uses git patch /patches/portage/dev-vcs/git.reused/0300_git_set_env_var_for_context_length.patch for git version 2.45.2
+    local command_array=("$diff" "--color=$color" -up --label "$old_file_shown" --label "$new_file_shown" ${GIT_DIFF_OPTS} -- "$old_file" "$new_file")
     #  if test "$pipe_to_less" == "1"; then
     #    #command_array+=( "|" "less" ) #won't work!
     #    set -vx
