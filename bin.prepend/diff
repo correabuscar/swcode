@@ -1,9 +1,12 @@
 #!/usr/bin/env -S PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin:${PATH}" bash
 
-DIFF_WRAPPER_DONT_ECHO=0 #set to 1 to no echo anything from the script $0 itself, even on stderr!
+#TODO: detection of only mode changes no contents changed!
+#TODO: see how it looks when both mode and contents changed! try to match output to that!
+#TODO: show proper output when file is created
+#TODO: show proper output when file is deleted!
 
 function perr() {
-  local args="$@"
+  local args=("$@")
   #return "0" if DEBUG is unset, but don't change it itself!
   #otherwise, if set to anything other than 0, even to empty string, it's enabled!
   #so, DEBUG="" or DEBUG="1" etc. means it's enabled
@@ -131,27 +134,42 @@ function main() {
     #
     local file_path="${remaining_args[0]}"
     local old_file_path="${file_path}" #doneFIXME: unsure if this is the one here, in all cases!
+    local new_file_path
     if test "${#remaining_args[@]}" == "9"; then
       #technically 4th index aka 5th arg would work too!
-      local new_file_path="${remaining_args[7]}"
+      new_file_path="${remaining_args[7]}"
       if test "$new_file_path" != "${remaining_args[4]}"; then
         perr "Assumption about args passed by 'git diff' to our diff wrapper aka '$0' are wrong because 5th and 8th are aren't the same!"
         exit 2 #aka trouble
       fi
     else
-      local new_file_path="${file_path}"
+      new_file_path="${file_path}"
     fi
-    local old_file="${remaining_args[1]}"
-    local new_file="${remaining_args[4]}"
-    local new_file_mode="${remaining_args[6]}"
     local old_file_hash
     local new_file_hash
-    set -e
-    old_file_hash="$(git hash-object -- "$old_file")"
-    new_file_hash="$(git hash-object -- "$new_file")"
-    set +e
+    local old_file="${remaining_args[1]}"
+    if test "$old_file" == "/dev/null"; then
+      old_file_path="$old_file"
+      old_file_hash="0000000000000000000000000000000000000000"
+    else
+      set -e
+      old_file_hash="$(git hash-object -t blob -- "$old_file")"
+      set +e
+    fi
+    local new_file="${remaining_args[4]}"
+    if test "$new_file" == "/dev/null"; then
+      new_file_path="$new_file"
+      new_file_hash="0000000000000000000000000000000000000000"
+    else
+      set -e
+      new_file_hash="$(git hash-object -t blob -- "$new_file")"
+      set +e
+    fi
+    #TODO: extract this 16 value into a constant/var
     local old_file_short_hash="${old_file_hash:0:16}"
     local new_file_short_hash="${new_file_hash:0:16}"
+
+    local new_file_mode="${remaining_args[6]}"
     #wtwTODO: do I have to do this prefixed slashes reduction for the normal files? or is there some gimmick where multiple ones may act differently?! WARNING: if u do this make sure u do it only for those that already have for sure a / prefixing them! or if deciding to slim down all /-es then it's fine.
     shopt -s extglob #"When you enable extglob in a script and then call another script from within that script, the extglob setting will be active in the called script as well." -chatgpt-4o
     # Trim down consecutive slashes using extglob
@@ -167,15 +185,21 @@ function main() {
     #now carry on:
 
     #doneFIXME: only add "/" if it doesn't already have one: removing all / that are prefixing it if they already exist.
-    local old_file_shown="a/${old_file_path##+(/)}"
-    local new_file_shown="b/${new_file_path##+(/)}"
-    #if [ -t 1 ]; then #this is useless
+    local old_file_shown
+    if test "$old_file" != "/dev/null"; then
+      old_file_shown="a/${old_file_path##+(/)}"
+    else
+      old_file_shown="$old_file"
+    fi
+    local new_file_shown
+    if test "$new_file" != "/dev/null"; then
+      new_file_shown="b/${new_file_path##+(/)}"
+    else
+      new_file_shown="$new_file"
+    fi
+    #if [ -t 1 ]; then #this is useless because 'git diff' pipes to pager(eg.'less') thus this is never true in that case.
     #  perr "Output is a terminal!"
     #fi
-    #TODO: these 2 lines should be colored if colors:
-    #same color as this:
-    #ESC[1m--- a/CHANGELOG.mdESC[0m
-    #that's `tput bold` and some form of `tput sgr0` which is ESC(BESC[m, this latter one being \E[0m where 0 is missing.
 
     #the following works but isn't needed or done by 'git diff', only by 'diff' itself:
     ## Get the modification time with the fractional seconds
@@ -202,7 +226,11 @@ function main() {
     #    "${command_array[@]}" | less; ec="${PIPESTATUS[0]}"
     #    set +vx
     #  else
-    perr "Actually ended up running the following '${#command_array[@]}' args line:"$'\n'"${command_array[@]}"
+    perr "Actually ended up running the following '${#command_array[@]}' args line:"$'\n'"${command_array[*]}"
+    #TODO: these 2 lines should be colored if colors:
+    #same color as this:
+    #ESC[1m--- a/CHANGELOG.mdESC[0m
+    #that's `tput bold` and some form of `tput sgr0` which is ESC(BESC[m, this latter one being \E[0m where 0 is missing.
     echo "diff --git $old_file_shown $new_file_shown"
     echo "index ${old_file_short_hash}..${new_file_short_hash} ${new_file_mode}"
     #    set -vx
