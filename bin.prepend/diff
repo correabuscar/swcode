@@ -1,0 +1,237 @@
+#!/usr/bin/env -S PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin:${PATH}" bash
+
+DIFF_WRAPPER_DONT_ECHO=0 #set to 1 to no echo anything from the script $0 itself, even on stderr!
+
+function perr() {
+  local args="$@"
+  #return "0" if DEBUG is unset, but don't change it itself!
+  #otherwise, if set to anything other than 0, even to empty string, it's enabled!
+  #so, DEBUG="" or DEBUG="1" etc. means it's enabled
+  #unset DEBUG or DEBUG=0 means it's disabled!
+  if test "${DEBUG-0}" != "0"; then
+    local debug_enabled=1
+  else
+    local debug_enabled=0
+  fi
+
+  if test "$debug_enabled" == "1"; then
+    echo "${args[@]}" >&2
+  fi
+}
+
+function main() {
+
+  # Trap function to handle errors, this is hit on any command we execute that has non-zero exit code!
+  # so we wanna ignore most of those unless they're inside a 'set -e' and 'set +e' block!
+  on_error() {
+    # shellcheck disable=SC2317
+    local ec="$?"
+    # else false positive spam:
+    # ^-----------^ SC2317 (info): Command appears to be unreachable. Check usage (or ignore if invoked indirectly).
+
+    # shellcheck disable=SC2317
+    # Check if 'errexit' (set -e) is in the list of enabled options
+    if [[ $- == *e* ]]; then
+      #so only take this path if 'set -e' was set/used, but not if 'set +e' is on
+      perr "Error (exit code '$ec') occurred in diff wrapper script '$0' at line: '$1'"
+      exit 2 #aka trouble
+    fi
+  }
+
+  # Set the trap to call on_error when an error occurs
+  # "ERR Trap: This trap is triggered whenever a command has a non-zero exit status, regardless of whether set -e is enabled or not."
+  trap 'on_error $LINENO' ERR
+
+  local diff="/usr/bin/diff"
+
+  if test -z "$diff"; then
+    perr "empty \$diff"
+    exit 99
+  fi
+
+  local AMBIGUOUS_ARG="--ambiguous"
+  local THE_UNAMBIGUOUS_ARG="--unambiguous"
+  local GIT_DIFF_WANTED="--git-diff"
+  #GIT_DIFF_WITH_LESS_WANTED="--git-diff-less"
+  local GIT_DIFF_WITH_COLOR_WANTED="--git-diff-color"
+
+  local git_diff_wanted=0
+  #pipe_to_less=0
+  local color=auto #because colordiff is used! and this can't be used because 'git diff' doesn't tell us when it's displaying the stuff or when redirecting it to file, so we won't know when to turn on/off the colors! 'git diff' uses pager usually which we wouldn't detect as being terminal! but it's not color=never here because when GIT_PAGER is empty or 'cat', we still allow diff to output colors if it goes on the terminal, and it knows then when it's gonna get redirected to NOT show colors!
+
+  local unambiguous=1
+  #^ unambiguous by default, which means, don't allow same hunk to can be applied in more than 1 place in the same file!
+
+  # Array to store the remaining arguments
+  local remaining_args=()
+  local at_saved=("$@")
+
+  # Iterate over the arguments
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "${AMBIGUOUS_ARG}")
+        unambiguous=0
+        #^ explicitly not checking if hunks can be applied to more than 1 place in the file.
+        shift
+        ;;
+      "${THE_UNAMBIGUOUS_ARG}")
+        unambiguous=1
+        #^ explicitly checking if hunks can be applied to more than 1 place in the file.
+        shift
+        ;;
+      "${GIT_DIFF_WANTED}")
+        #this is the option that's used as 'git diff' external diff program!
+        git_diff_wanted=1
+        #^ explicitly not checking if hunks can be applied to more than 1 place in the file.
+        shift
+        ;;
+      "${GIT_DIFF_WITH_COLOR_WANTED}")
+        #so, `git diff` pipes to `less` or to $GIT_PAGER, unless set to empty to to "cat"
+        #but with this option, then this works:
+        #$ GIT_EXTERNAL_DIFF="diff --git-diff-color" GIT_PAGER= git diff |& less
+        #to have colors in 'less'
+        #but this is bad when redirecting because the colors are kept
+        #so never actually using this option!
+        git_diff_wanted=1
+        color=always
+        #^ explicitly not checking if hunks can be applied to more than 1 place in the file.
+        shift
+        ;;
+      #    "${GIT_DIFF_WITH_LESS_WANTED}")
+        #    #XXX: no good, this will pipe each file diff-ed to less, instead of all
+        #      git_diff_wanted=1
+        #      pipe_to_less=1
+        #      color=always
+        #      #^ explicitly not checking if hunks can be applied to more than 1 place in the file.
+        #      shift
+        #      ;;
+      *)
+        # Add argument to remaining_args array
+        remaining_args+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  perr "'$0' wrapper script called with '${#at_saved[@]}' args: '${at_saved[*]}'"
+  local ec
+  #eg. $ GIT_EXTERNAL_DIFF="diff --git-diff" GIT_PAGER= git diff
+  if test "$git_diff_wanted" == "1"; then
+    #if 7 args:
+    #you get something like:
+    #path old-file old-hex old-mode new-file new-hex new-mode
+    #eg.
+    #src/apply.rs /tmp/git-blob-JPvhWI/apply.rs 9b971cf2e82de620a4724a815f3946ed55a57039 100644 src/apply.rs 0000000000000000000000000000000000000000 100644
+    perr "$0: git diff is wanted, '${#remaining_args[@]}' args (path old-file old-hex old-mode new-file new-hex new-mode) as follows: '${remaining_args[*]}'"
+    #if 9 args(eg. used git diff --no-index /tmp/a /tmp/Xorg.0.log ):
+    #the 8th is /tmp/Xorg.0.log
+    #the 9th is "index cef083220..b68c75fe1 100644\n" (i think)
+    #for this:
+    #/tmp/a /tmp/a 0000000000000000000000000000000000000000 100644 /tmp/Xorg.0.log 0000000000000000000000000000000000000000 100644 /tmp/Xorg.0.log index cef083220..b68c75fe1 100644
+    #
+    local file_path="${remaining_args[0]}"
+    local old_file_path="${file_path}" #doneFIXME: unsure if this is the one here, in all cases!
+    if test "${#remaining_args[@]}" == "9"; then
+      #technically 4th index aka 5th arg would work too!
+      local new_file_path="${remaining_args[7]}"
+      if test "$new_file_path" != "${remaining_args[4]}"; then
+        perr "Assumption about args passed by 'git diff' to our diff wrapper aka '$0' are wrong because 5th and 8th are aren't the same!"
+        exit 2 #aka trouble
+      fi
+    else
+      local new_file_path="${file_path}"
+    fi
+    local old_file="${remaining_args[1]}"
+    local new_file="${remaining_args[4]}"
+    local new_file_mode="${remaining_args[6]}"
+    local old_file_hash
+    local new_file_hash
+    set -e
+    old_file_hash="$(git hash-object -- "$old_file")"
+    new_file_hash="$(git hash-object -- "$new_file")"
+    set +e
+    local old_file_short_hash="${old_file_hash:0:16}"
+    local new_file_short_hash="${new_file_hash:0:16}"
+    #wtwTODO: do I have to do this prefixed slashes reduction for the normal files? or is there some gimmick where multiple ones may act differently?! WARNING: if u do this make sure u do it only for those that already have for sure a / prefixing them! or if deciding to slim down all /-es then it's fine.
+    shopt -s extglob #"When you enable extglob in a script and then call another script from within that script, the extglob setting will be active in the called script as well." -chatgpt-4o
+    # Trim down consecutive slashes using extglob
+    #       ${parameter//pattern/string}
+    #"If there are two slashes separating parameter and pattern, all matches of pattern are replaced with string."
+    #"If the extglob shell option is enabled using the shopt builtin, the shell recognizes  several  extended  pattern
+    # matching operators.  In the following description, a pattern-list is a list of one or more patterns separated by
+    # a |.  Composite patterns may be formed using one or more of the following sub-patterns:"
+    # +(pattern-list)
+    #   Matches one or more occurrences of the given patterns
+    old_file_path="${old_file_path//+(\/)/\/}"
+    new_file_path="${new_file_path//+(\/)/\/}"
+    #now carry on:
+
+    #doneFIXME: only add "/" if it doesn't already have one: removing all / that are prefixing it if they already exist.
+    local old_file_shown="a/${old_file_path##+(/)}"
+    local new_file_shown="b/${new_file_path##+(/)}"
+    #if [ -t 1 ]; then #this is useless
+    #  perr "Output is a terminal!"
+    #fi
+    #TODO: these 2 lines should be colored if colors:
+    #same color as this:
+    #ESC[1m--- a/CHANGELOG.mdESC[0m
+    #that's `tput bold` and some form of `tput sgr0` which is ESC(BESC[m, this latter one being \E[0m where 0 is missing.
+
+    #the following works but isn't needed or done by 'git diff', only by 'diff' itself:
+    ## Get the modification time with the fractional seconds
+    #TIMESTAMP=$(stat -c '%y' "$old_file")
+    #
+    ## Extract the date, time, and fractional seconds
+    #DATE=$(echo $TIMESTAMP | awk '{print $1}')
+    #TIME=$(echo $TIMESTAMP | awk '{print $2}' | cut -d. -f1)
+    #FRACTIONAL=$(echo $TIMESTAMP | awk '{print $2}' | cut -d. -f2)
+    #
+    ## Get the timezone information
+    #TIMEZONE=$(date +%z)
+    #
+    ## Combine the results into the desired format
+    #FORMATTED_TIMESTAMP="$DATE $TIME.$FRACTIONAL $TIMEZONE"
+    #
+
+    #cp -- "$old_file" /tmp/foo.rs
+    #command_array=("$diff" "--color=$color" -up --label "a/$old_file_path $FORMATTED_TIMESTAMP (actually time of the diff)" --label "b/$new_file_path " -- "$old_file" "$new_file")
+    local command_array=("$diff" "--color=$color" -up --label "$old_file_shown" --label "$new_file_shown" -- "$old_file" "$new_file")
+    #  if test "$pipe_to_less" == "1"; then
+    #    #command_array+=( "|" "less" ) #won't work!
+    #    set -vx
+    #    "${command_array[@]}" | less; ec="${PIPESTATUS[0]}"
+    #    set +vx
+    #  else
+    perr "Actually ended up running the following '${#command_array[@]}' args line:"$'\n'"${command_array[@]}"
+    echo "diff --git $old_file_shown $new_file_shown"
+    echo "index ${old_file_short_hash}..${new_file_short_hash} ${new_file_mode}"
+    #    set -vx
+    "${command_array[@]}" ; ec="${PIPESTATUS[0]}"
+    #    set +vx
+    #  fi
+    if test "$ec" == "0"; then
+      #that's weird, it shouldn't ever 'diff' 2 files with same content
+      ec="2" #aka trouble
+    elif test "$ec" == 1; then
+      #yeah we knew they're different, but we can't exit code 1, or 'git diff' will stop
+      ec="0"
+    fi
+  else
+    perr "$0: normal diff, '${#remaining_args[@]}' args: '${remaining_args[*]}'"
+    #  set -vx
+    #  "$diff" "${remaining_args[@]}" ; ec="$?"
+    #  set +vx
+    local command_array=(
+    "$diff" "${remaining_args[@]}"
+  )
+  perr "${command_array[@]}"
+  #    set -vx
+  "${command_array[@]}" ; ec="${PIPESTATUS[0]}"
+  #    set +vx
+  fi
+
+  exit "$ec"
+}
+
+main "$@"
+
