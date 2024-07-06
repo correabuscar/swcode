@@ -229,8 +229,18 @@ function main() {
 
     #cp -- "$old_file" /tmp/foo.rs
     #command_array=("$diff" "--color=$color" -up --label "a/$old_file_path $FORMATTED_TIMESTAMP (actually time of the diff)" --label "b/$new_file_path " -- "$old_file" "$new_file")
-    #XXX: can't quote $GIT_DIFF_OPTS with double quotes else it can be an empty arg! NOTE: for this to properly work, it uses git patch /patches/portage/dev-vcs/git.reused/0300_git_set_env_var_for_context_length.patch for git version 2.45.2
-    local command_array=("$diff" "--color=$color" -up --label "$old_file_shown" --label "$new_file_shown" ${GIT_DIFF_OPTS} -- "$old_file" "$new_file")
+    #local RE="^\s*fn\s+\w+\s*(<[^>]*>)?\s*\([^)]*\)"
+    local command_array
+    # shellcheck disable=SC2206
+    # needs to be outside here, on the var, to disable it.
+    # (warning): Quote to prevent word splitting/globbing, or split robustly with mapfile or read -a.
+    command_array=("$diff"
+      #"--show-function-line=$RE" #nvm, wtw it was doing was better, or this has no effect!
+      "--color=$color" -up --label "$old_file_shown" --label "$new_file_shown"
+      #XXX: can't quote $GIT_DIFF_OPTS with double quotes else it can be an empty arg! NOTE: for this to properly work, it uses git patch /patches/portage/dev-vcs/git.reused/0300_git_set_env_var_for_context_length.patch for git version 2.45.2
+      #XXX: it's at the end here so it can override any of our set args
+      ${GIT_DIFF_OPTS}
+      -- "$old_file" "$new_file")
     #  if test "$pipe_to_less" == "1"; then
     #    #command_array+=( "|" "less" ) #won't work!
     #    set -vx
