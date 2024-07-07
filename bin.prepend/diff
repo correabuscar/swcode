@@ -236,7 +236,14 @@ function main() {
     # (warning): Quote to prevent word splitting/globbing, or split robustly with mapfile or read -a.
     command_array=("$diff"
       #"--show-function-line=$RE" #nvm, wtw it was doing was better, or this has no effect!
-      "--color=$color" -up --label "$old_file_shown" --label "$new_file_shown"
+      "--color=$color"
+      "-up"
+      #XXX: if you use -u or -uNUM the minimum is gonna be capped at 3, even if NUM is < 3 ! but with a manual patch(its name below) a later arg (other than -u due to what i just mentioned) like -UNUM or -U NUM or --unified=NUM can decrease the already set context even below 3!
+      #-p
+      #--unified=3
+      #XXX: if you use any value for unified here beforehand, even -u which means 3, or anything any value, this value becomes the minimum value that can be used even if you, in a later arg, override it with a lower value, it won't set it lower! actually imma have to patch it so it does use later overrides! /patches/portage/sys-apps/diffutils.reused/0500_use_context_length_specified_last.patch
+      --label "$old_file_shown"
+      --label "$new_file_shown"
       #XXX: can't quote $GIT_DIFF_OPTS with double quotes else it can be an empty arg! NOTE: for this to properly work, it uses git patch /patches/portage/dev-vcs/git.reused/0300_git_set_env_var_for_context_length.patch for git version 2.45.2
       #XXX: it's at the end here so it can override any of our set args
       ${GIT_DIFF_OPTS}
