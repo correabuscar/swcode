@@ -5,6 +5,8 @@
 #TODO: show proper output when file is created
 #TODO: show proper output when file is deleted!
 
+
+# args are ignored unless DEBUG env.var. is set to non "0", then they're printed to stderr!
 function perr() {
   local args=("$@")
   #return "0" if DEBUG is unset, but don't change it itself!
@@ -22,6 +24,98 @@ function perr() {
   fi
 }
 
+function get_callers_pstree() {
+  # Array to store process information
+  local -a process_tree=()
+
+  # Set to store processed PIDs
+  local -A processed_pids
+
+  # Function to retrieve process information recursively
+  function build_process_tree() {
+    #shopt -s extglob  # Enable extended globbing
+    local pid=$1
+    local indent=$2
+    #echo "New: $# $*"
+    local trimmed_pid
+    #trimmed_pid="${pid#"${pid%%[![:space:]]*}"}"   # Remove leading whitespace
+    #trimmed_pid="${trimmed_pid%"${trimmed_pid##*[![:space:]]}"}"   # Remove trailing whitespace
+    trimmed_pid="${pid#"${pid%%[![:space:]]*}"}"   # trim leading whitespace
+    trimmed_pid="${trimmed_pid%"${trimmed_pid##*[![:space:]]}"}"   # trim trailing whitespace
+    #echo "trim='$trimmed_pid'"
+
+
+
+
+      # Check if we've already processed this PID to avoid infinite loops
+      if [[ -n "${processed_pids[$trimmed_pid]}" ]]; then
+        echo "!! Avoided infinite loop for '$pid' due to bad coding!" >&2
+        return 2
+      fi
+
+      # Mark this PID as processed
+      processed_pids[$trimmed_pid]=1
+
+      # Read command line arguments from /proc/PID/cmdline into an array
+      local cmdline_args=()
+      while IFS= read -r -d $'\0' arg; do
+        cmdline_args+=("$arg")
+      done < "/proc/$trimmed_pid/cmdline"
+
+      # Determine the command (first argument) and its arguments count
+      #local cmd="${cmdline_args[0]}"
+      local args_count="${#cmdline_args[@]}"
+
+      ## Get process command line
+      #local cmd
+      ##cmd="$(ps -o cmd= -p "$pid" 2>/dev/null)"
+      #cmd="$(ps -o cmd= -p "$trimmed_pid")" # 2>/dev/null)"
+
+      if test "$args_count" -gt "0"; then
+        # Store process information in the array
+        #process_tree+=("${indent}PID: '$pid' - Command: '$cmd'" )
+        #process_tree+=("${indent}'$cmd'" )
+        local all_args=""
+        for element in "${cmdline_args[@]}"
+        do
+          # Enclose each element in single quotes and concatenate with the existing out_str
+          all_args="${all_args}'${element}' "
+        done
+        all_args="${all_args% }"
+        #used $pid with spaces on purpose - doesn't apply anymore, $pid is trimmed too.
+        process_tree+=("${indent}'$pid'-'$args_count'-${all_args}")
+
+          # Find parent PID
+          local ppid
+          #ppid="$(ps -o ppid= -p "$pid" 2>/dev/null)"
+          #ppid="$(ps -o ppid= -p "$trimmed_pid" 2>/dev/null)"
+          ppid="$(awk '{print $4}' "/proc/$pid/stat")"
+          if test "$ppid" != "0"; then
+            local trimmed_Ppid
+            trimmed_Ppid="${ppid#"${ppid%%[![:space:]]*}"}"   # Remove leading whitespace
+            trimmed_Ppid="${trimmed_Ppid%"${trimmed_Ppid##*[![:space:]]}"}"   # Remove trailing whitespace
+            #echo "trim2='$trimmed_Ppid'"
+
+
+          # Recursively call function for parent process
+          #if [ "$trimmed_Ppid" != "1" ] && [ "$trimmed_Ppid" != "$trimmed_pid" ]; then
+          build_process_tree "$ppid" "$indent  "
+          fi
+      fi
+    }
+
+  # Start with our own PID
+  build_process_tree "$$" ""
+
+  # Print the process tree
+  str="Our callers tree:"$'\n'
+  for line in "${process_tree[@]}"; do
+    #echo "$line"
+    str+="${line}"$'\n'
+  done
+  echo -n "$str"
+}
+
 function main() {
 
   # Trap function to handle errors, this is hit on any command we execute that has non-zero exit code!
@@ -36,6 +130,7 @@ function main() {
     # Check if 'errexit' (set -e) is in the list of enabled options
     if [[ $- == *e* ]]; then
       #so only take this path if 'set -e' was set/used, but not if 'set +e' is on
+      #don't use perr for this, because we want this shown no matter what:
       echo "Error (exit code '$ec') occurred in diff wrapper script '$0' at line: '$1'" >&2
       exit 2 #aka trouble
     fi
@@ -44,6 +139,13 @@ function main() {
   # Set the trap to call on_error when an error occurs
   # "ERR Trap: This trap is triggered whenever a command has a non-zero exit status, regardless of whether set -e is enabled or not."
   trap 'on_error $LINENO' ERR
+
+  # eg. "/bin/bash --login" or "/home/user/.cargo/bin/alacritty"
+  #local parent_pid="$PPID"
+  #local OUR_CALLER="$(ps -o cmd= -p "$parent_pid")"
+  local OUR_CALLERS
+  OUR_CALLERS="$(get_callers_pstree)"
+  #TODO: use this ^ to report whoever tried to call 'diff' aka us, in case the args were unexpected/wrong!
 
   local diff="/usr/bin/diff"
 
@@ -116,7 +218,9 @@ function main() {
     esac
   done
 
-  perr "'$0' wrapper script called with '${#at_saved[@]}' args: '${at_saved[*]}'\nand with env.vars. GIT_DIFF_OPTS='$GIT_DIFF_OPTS', GIT_DIFF_PATH_COUNTER='$GIT_DIFF_PATH_COUNTER', GIT_DIFF_PATH_TOTAL='$GIT_DIFF_PATH_TOTAL'"
+  perr "'$0' wrapper script called by PID='$$', PPID='$PPID' with '${#at_saved[@]}' args: '${at_saved[*]}'\nand with env.vars. GIT_DIFF_OPTS='$GIT_DIFF_OPTS', GIT_DIFF_PATH_COUNTER='$GIT_DIFF_PATH_COUNTER', GIT_DIFF_PATH_TOTAL='$GIT_DIFF_PATH_TOTAL'"
+  perr "$OUR_CALLERS"
+
   perr "$(id)" #even if 'git' was started as suid root, this external diff cmd won't run as root, but as the normal user that started 'git'
   #GIT_DIFF_PATH_TOTAL is the number of how many diff-ed files will be!
   #GIT_DIFF_PATH_COUNTER is the 1-based counter that's incremented by 1 for each of those diff-ed files! eg. 1 for first and same value as $GIT_DIFF_PATH_TOTAL for last diff-ed file.
