@@ -49,7 +49,7 @@ function get_callers_pstree() {
 
       # Check if we've already processed this PID to avoid infinite loops
       if [[ -n "${processed_pids[$trimmed_pid]}" ]]; then
-        echo "!! Avoided infinite loop for '$pid' due to bad coding!" >&2
+        echo "!! Avoided infinite loop for pid '$pid' due to bad coding!" >&2
         return 2
       fi
 
@@ -218,7 +218,7 @@ function main() {
     esac
   done
 
-  perr "'$0' wrapper script called by PID='$$', PPID='$PPID' with '${#at_saved[@]}' args: '${at_saved[*]}'\nand with env.vars. GIT_DIFF_OPTS='$GIT_DIFF_OPTS', GIT_DIFF_PATH_COUNTER='$GIT_DIFF_PATH_COUNTER', GIT_DIFF_PATH_TOTAL='$GIT_DIFF_PATH_TOTAL'"
+  perr "'$0' wrapper script called by PID='$$', PPID='$PPID' with '${#at_saved[@]}' args: '${at_saved[*]}'"$'\n'"and with env.vars. GIT_DIFF_OPTS='$GIT_DIFF_OPTS', GIT_DIFF_PATH_COUNTER='$GIT_DIFF_PATH_COUNTER', GIT_DIFF_PATH_TOTAL='$GIT_DIFF_PATH_TOTAL'"
   perr "$OUR_CALLERS"
 
   perr "$(id)" #even if 'git' was started as suid root, this external diff cmd won't run as root, but as the normal user that started 'git'
