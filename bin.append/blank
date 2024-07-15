@@ -10,4 +10,6 @@ roon() {
   return "$ec"
 }
 
+echo "$0[$#] $*"
 roon xset dpms force suspend
+#exit 33

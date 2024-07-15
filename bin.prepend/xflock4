@@ -1,5 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env -S PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin:${PATH}" bash
 
+#!/bin/bash
+#echo "$0 $# $*"
+#exit 2
 #xflock4 exists only on ArchLinux
 #this is workaround on Gentoo with alock-9999 from some overlay, as it doesn't exist on ::gentoo only v1 which is crap!
 alock -bg blank -cursor blank -input frame -auth pam &

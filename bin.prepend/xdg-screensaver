@@ -1,10 +1,14 @@
+#!/usr/bin/env -S PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin:${PATH}" bash
+
 #!/bin/bash
+
+
 
 echo "$0[$#] $*"
 if test "$#" -eq "1"; then
   if test "$1" == "lock"; then
     #this will allow lxqt-base/lxqt-powermanagement-0.17.0 to work because it wants to lock session by running "xdg-screensaver lock" and I'm using alock so fails!
-    xflock4 #this is from ~/bin/xflock4
+    xflock4 #this is from ~/bin/xflock4 well, unless the one from system exists due to the PATH used in shebang!
     exit "$?"
   fi
 fi
