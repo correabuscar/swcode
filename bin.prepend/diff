@@ -5,6 +5,7 @@
 #TODO: show proper output when file is created
 #TODO: show proper output when file is deleted!
 
+export RUST_BACKTRACE=1
 
 # args are ignored unless DEBUG env.var. is set to non "0", then they're printed to stderr!
 function perr() {
@@ -147,7 +148,16 @@ function main() {
   OUR_CALLERS="$(get_callers_pstree)"
   #TODO: use this ^ to report whoever tried to call 'diff' aka us, in case the args were unexpected/wrong!
 
-  local diff="/usr/bin/diff"
+  local diff
+  # Get the directory where the script is located
+  local script_dir="$(dirname -- "$(realpath -- "$0")")"
+  if test -z "$script_dir" || test ! -d "$script_dir"; then
+    perr "empty \$script_dir, or not a dir '$script_dir'"
+    exit 99
+  fi
+  gnudiff="/usr/bin/diff"
+  rustdiff="${script_dir}/bins.notinpath/diff"
+  diff="$rustdiff"
 
   if test -z "$diff"; then
     perr "empty \$diff"
@@ -338,9 +348,14 @@ function main() {
     # shellcheck disable=SC2206
     # needs to be outside here, on the var, to disable it.
     # (warning): Quote to prevent word splitting/globbing, or split robustly with mapfile or read -a.
-    command_array=("$diff"
-      #"--show-function-line=$RE" #nvm, wtw it was doing was better, or this has no effect!
+    command_array=("$diff")
+    if test "$diff" == "$gnudiff"; then
+      command_array+=(
       "--color=$color"
+      )
+    fi
+    command_array+=(
+      #"--show-function-line=$RE" #nvm, wtw it was doing was better, or this has no effect!
       "-up"
       #XXX: if you use -u or -uNUM the minimum is gonna be capped at 3, even if NUM is < 3 ! but with a manual patch(its name below) a later arg (other than -u due to what i just mentioned) like -UNUM or -U NUM or --unified=NUM can decrease the already set context even below 3!
       #-p

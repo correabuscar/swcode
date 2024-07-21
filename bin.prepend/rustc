@@ -2,6 +2,9 @@
 
 function foo() {
   local base="$(basename "$0")"
+#  if test "$base" == "rustdoc"; then
+    #echo "$# $0 $*" >> /tmp/foo.log
+#  fi
   if test "$(id -n -u)" == "user"; then
     "/home/user/.cargo/bin/$base" "$@"
   else
