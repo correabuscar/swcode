@@ -15,6 +15,7 @@ bwrap --ro-bind /usr /usr --ro-bind /bin /bin --ro-bind /sbin /sbin --ro-bind /l
   --ro-bind "/home/user/1del" "/home/user/1del"  \
   --ro-bind "/home/user/1" "/home/user/1"  \
   --ro-bind "/home/user/2" "/home/user/2"  \
+  --ro-bind "/home/user/Downloads.bwrapped" "/home/user/Downloads.bwrapped"  \
   --ro-bind "$@" "$@" \
   -- /usr/bin/vlc "$@"
 #i dno if all of these are needed!

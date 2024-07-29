@@ -158,6 +158,7 @@ function main() {
   gnudiff="/usr/bin/diff"
   rustdiff="${script_dir}/bins.notinpath/diff"
   diff="$rustdiff"
+  #diff="$gnudiff"
 
   if test -z "$diff"; then
     perr "empty \$diff"
