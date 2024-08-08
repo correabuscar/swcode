@@ -10,5 +10,5 @@
 
 #which -a bash
 #echo "PATH=$PATH"
-echo "$# args"
-echo "$@"
+echo "$# args" >&2
+echo "$@" >&2
