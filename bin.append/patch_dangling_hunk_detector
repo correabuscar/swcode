@@ -10,10 +10,10 @@ awk --assign wwarn="${WARN:-1}" -f <(echo '
 function abs(v) {return v < 0 ? -v : v}
 function run_test() {
   if (in_hunk == 1) {
-    #print hunk_lines_expected_in_input,in_hunk_minus_lines,in_hunk_plus_lines
     total_lines_in_out_file= hunk_lines_expected_in_input - in_hunk_minus_lines + in_hunk_plus_lines
+    #print hunk_lines_expected_in_input,in_hunk_minus_lines,in_hunk_plus_lines,total_lines_in_out_file,hunk_lines_expected_in_output
     if (total_lines_in_out_file != hunk_lines_expected_in_output) {
-      print "Malformed hunk(starting at line",hunk_starts_at_line,") has ",total_lines_in_out_file," lines but ", hunk_lines_expected_in_output, " expected! For file", FILENAME
+      print "Malformed hunk(starting at line",hunk_starts_at_line,") has ",total_lines_in_out_file," lines but ", hunk_lines_expected_in_output, " expected! Likely some empty lines are missing the space at the beginning! For file", FILENAME
       exit 2
     } else {
      #print "Hunk ended normally"
@@ -80,6 +80,7 @@ BEGINFILE {
     #print $0
     #So this happens because patches were copied from eg. github via mouse copy/paste, instead of file download.
     #But this is accepted by the patch command, however you can get Malformed hunk because of this
+    #FIXME: should probably detect better when hunk is done, and thus would not falsely warn here when not in hunk!
     if (wwarn == 1) {
       print "Warn: Empty line at ",NR," (for hunk starting at line",hunk_starts_at_line,") which should be prefixed by a space char! For file", FILENAME, " Fix this if you get Malformed hunk after this!"
     }
