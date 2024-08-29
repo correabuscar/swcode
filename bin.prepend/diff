@@ -386,10 +386,17 @@ function main() {
     #    set +vx
     #  fi
     if test "$ec" == "0"; then
-      #that's weird, it shouldn't ever 'diff' 2 files with same content
-      ec="2" #aka trouble
+      #that's weird, it shouldn't ever 'diff' 2 files with same content FIXME: actually it does this when only the file mode is changed! eg. /swcode/bin.prepend/diff: git diff is wanted, '7' args (path old-file old-hex old-mode new-file new-hex new-mode) as follows: 'screenshots/01-main.png screenshots/01-main.png 9496393f6edcf1ca76c00d085c439161b3c5994d 100755 screenshots/01-main.png 9496393f6edcf1ca76c00d085c439161b3c5994d 100644'
+      if test "$old_file" != "$new_file"; then
+        echo "The two files matched contents but not filenames, which is odd in context of 'git diff', failing!"
+        ec="2" #aka trouble
+      fi
+      # else keep the exit code 0
+      # TODO: show the mode diffs, see how `git diff` does it
+      echo "The file mode has changed (TODO: in '$0')"
+      ec="0" #just in case the 'if' above changes the condition!
     elif test "$ec" == 1; then
-      #yeah we knew they're different, but we can't exit code 1, or 'git diff' will stop
+      #yeah we knew they're different, but we can't exit code 1, or 'git diff' will stop, wait really? odd. ah it's because they didn't expect external diff(as gnu diff) to be used so it's not tested against it, so any non zero exit code is considered fail.
       ec="0"
     fi
   else
